@@ -51,8 +51,8 @@ int main(int argc, char *argv[]) {
   TreeNode *topol_ref = NULL;
   MSA *evalaln = NULL;
   double mean, stdev, median, min, max, min_95CI, max_95CI, q25, q75;
-  char *topolfname, *msafname, *treefname;
-  List *rfdists, *lldists;
+  char *topolfname = NULL, *msafname = NULL, *treefname = NULL;
+  List *rfdists = NULL, *lldists;
   char **names = NULL;
   Matrix *D = NULL;
   List **Dij_list = NULL;

@@ -109,8 +109,8 @@ char *nj_get_nuisance_param_name(TreeModel *mod, CovarData *data, int idx) {
       return "relclock_sig";
     idx -= 1;
     if (idx < (mod->tree->nnodes + 1)/2 - 1) {
-      tmp = smalloc(15 * sizeof(char));
-      snprintf(tmp, 15, "nodetime[%d]", idx);
+      tmp = smalloc(25 * sizeof(char));
+      snprintf(tmp, 25, "nodetime[%d]", idx);
       return tmp;
     }
     idx -= data->treeprior->nodetimes->size;

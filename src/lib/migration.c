@@ -168,7 +168,7 @@ double mig_compute_log_likelihood(TreeModel *mod, MigTable *mg,
   double lscaling_threshold = log(scaling_threshold), ll = 0;
   double tmp[nstates], root_eqfreqs[nstates];
   Matrix **grad_mat = NULL;
-  List **grad_mat_P;
+  List **grad_mat_P = NULL;
   MarkovMatrix *par_subst_mat, *sib_subst_mat, *leading_Pt, *lsubst_mat, *rsubst_mat; ;
   Vector *lscale, *lscale_o; /* inside and outside versions */
   Vector *this_deriv_gtr = NULL;
@@ -297,7 +297,7 @@ double mig_compute_log_likelihood(TreeModel *mod, MigTable *mg,
   /* to compute gradients efficiently, need to make a second pass
      across the tree to compute "outside" probabilities */
   if (branchgrad != NULL) {
-    double expon;
+    double expon = 0;
     pre_trav = tr_preorder(mod->tree);
 
     for (nodeidx = 0; nodeidx < lst_size(pre_trav); nodeidx++) {

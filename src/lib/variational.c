@@ -39,7 +39,7 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn,
     *sigmapar = data->params;
   int n = data->nseqs, j, t, stop = FALSE, bestt = -1, graddim,
     dim = data->dim, fulld = n*dim;
-  double elb, avell, avemigll, kld, bestelb = -INFTY, bestll = -INFTY,
+  double elb = 0, avell, avemigll, kld, bestelb = -INFTY, bestll = -INFTY,
     bestkld = -INFTY, bestmigll = -INFTY,
     running_tot = 0, last_running_tot = -INFTY, trace, logdet, penalty = 0,
     bestpenalty = 0, ave_lprior, best_lprior = -INFTY, subsamp_rescale = 1.0;

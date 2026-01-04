@@ -308,10 +308,9 @@ void tay_HVP(Vector *out, Vector *v, void *dat)
    data_vd is CovarData*, which must contain Jbx, Sigma, and workspace vectors. */
 void tay_SVP(Vector *out, Vector *v, void *dat) {
   TaylorData *tay_data = (TaylorData *)dat;
-  int nbranches = tay_data->nbranches;
     
-  assert(v->size == nbranches);
-  assert(out->size == nbranches);
+  assert(v->size == tay_data->nbranches);
+  assert(out->size == tay_data->nbranches);
 
   /* tmp_x1 = JbxT * v */
   mat_vec_mult(tay_data->tmp_x1, tay_data->JbxT, v);

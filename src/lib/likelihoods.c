@@ -58,8 +58,8 @@ double nj_compute_log_likelihood(TreeModel *mod, CovarData *data, Vector *branch
   double scaling_threshold = sqrt(DBL_MIN) * 1.0e10;  /* need some padding */
   double lscaling_threshold = log(scaling_threshold), ll = 0;
   double tmp[nstates];
-  Matrix **grad_mat, **grad_mat_HKY;
-  List **grad_mat_REV;
+  Matrix **grad_mat = NULL, **grad_mat_HKY = NULL;
+  List **grad_mat_REV = NULL;
   unsigned int rescale;
   MSA *msa = data->msa;
   Vector *this_deriv_gtr = NULL;
@@ -228,7 +228,7 @@ double nj_compute_log_likelihood(TreeModel *mod, CovarData *data, Vector *branch
     /* to compute gradients efficiently, need to make a second pass
        across the tree to compute "outside" probabilities */
     if (branchgrad != NULL) {
-      double expon;
+      double expon = 0;
       traversal = tr_preorder(mod->tree);
 
       for (nodeidx = 0; nodeidx < lst_size(traversal); nodeidx++) {
