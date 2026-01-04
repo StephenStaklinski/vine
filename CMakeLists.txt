@@ -9,50 +9,17 @@ set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
 # ---- PHAST dependency --------------------------------------------------
-# Packagers / users can do: -DPHAST_ROOT=/path/to/phast
-set(PHAST_ROOT "" CACHE PATH "Root of PHAST installation (with include/ and lib/)")
+# Users/packagers provide -DPHAST_ROOT=/path/to/prefix (the install prefix)
+set(PHAST_ROOT "" CACHE PATH "PHAST install prefix (contains lib/cmake/phast)")
 
 if (NOT PHAST_ROOT)
-  message(FATAL_ERROR "PHAST_ROOT is not set. Configure with -DPHAST_ROOT=/path/to/phast")
+  message(FATAL_ERROR "PHAST_ROOT is not set. Configure with -DPHAST_ROOT=/path/to/phast-prefix")
 endif()
 
-set(PHAST_INCLUDE_DIR "${PHAST_ROOT}/include" CACHE PATH "PHAST include directory")
-set(PHAST_LIBRARY_DIR "${PHAST_ROOT}/lib")
+# Tell CMake where to find phastConfig.cmake
+list(PREPEND CMAKE_PREFIX_PATH "${PHAST_ROOT}")
 
-set(PHAST_LIBRARY "${PHAST_LIBRARY_DIR}/libphast.a" CACHE FILEPATH "PHAST static library")
-
-if (NOT EXISTS "${PHAST_INCLUDE_DIR}/phast/misc.h")
-  message(FATAL_ERROR "Could not find phast headers in ${PHAST_INCLUDE_DIR}")
-endif()
-
-if (NOT EXISTS "${PHAST_LIBRARY}")
-  message(FATAL_ERROR "Could not find libphast.a at ${PHAST_LIBRARY}")
-endif()
-
-# Make PHAST info visible to subdirs
-add_library(phast STATIC IMPORTED)
-set_target_properties(phast PROPERTIES
-  IMPORTED_LOCATION "${PHAST_LIBRARY}"
-  INTERFACE_INCLUDE_DIRECTORIES "${PHAST_INCLUDE_DIR}"
-)
-
-# LAPACK handling
-if(APPLE)
-    add_compile_definitions(VECLIB ACCELERATE_NEW_LAPACK)
-#   - VECLIB tells external_libs.h to use Accelerate
-#   - ACCELERATE_NEW_LAPACK selects the new (non-CLAPACK) interface
-else()
-    find_package(BLAS REQUIRED)
-    find_package(LAPACK REQUIRED)
-    add_compile_definitions(PHAST_LAPACK_GENERIC)
-endif()
-
-# ---- PCRE dependency via PHAST -----------------------------------------
-find_library(PCRE_LIBRARY NAMES pcre)
-
-if (NOT PCRE_LIBRARY)
-  message(FATAL_ERROR "Could not find libpcre; install it (e.g. Homebrew 'pcre').")
-endif()
+find_package(phast CONFIG REQUIRED)
 
 # ---- Project layout ----------------------------------------------------
 

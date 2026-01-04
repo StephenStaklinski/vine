@@ -40,23 +40,13 @@ target_compile_options(vine_core PUBLIC
 
 target_include_directories(vine_core
     PUBLIC
-        "${VINE_INCLUDE_DIR}"     # vine/include
-        "${PHAST_INCLUDE_DIR}"    # phast/include
-        "${PHAST_ROOT}/src/lib/pcre"   # for pcre.h vendored in PHAST
+        "${VINE_INCLUDE_DIR}"     
 )
 
 target_link_libraries(vine_core
     PUBLIC
-        phast        # libphast.a in ${PHAST_LIBRARY_DIR}
-        ${PCRE_LIBRARY}
+        phast::phast_core
 )
-
-# PHAST was built against Accelerate/vecLib; add the same framework here
-if(APPLE)
-    target_link_libraries(vine_core PUBLIC "-framework Accelerate")
-else()
-    target_link_libraries(vine_core PUBLIC LAPACK::LAPACK BLAS::BLAS)
-endif()
 
 # Install the library
 install(TARGETS vine_core
