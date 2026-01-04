@@ -1,27 +1,33 @@
-## Building from source (with CMake)
+# VINE
 
-1. Install PHAST and note its install prefix, e.g. `/usr/local` or `/opt/homebrew/opt/phast`.
-2. Configure and build:
+## Building from source (CMake)
+
+**VINE (Variational Inference with Node Embeddings)** is a program and set
+of supporting libraries for variational inference of phylogenetic trees.
+VINE depends on PHAST, which must be installed separately.
+
+If PHAST is installed in a standard location, CMake will usually find it
+automatically. Otherwise, you can specify its install prefix explicitly.
 
    ```bash
    cmake -S . -B build \
-         -DCMAKE_BUILD_TYPE=Release \
-         -DPHAST_ROOT=/opt/homebrew/opt/phast
+      -DCMAKE_BUILD_TYPE=Release \
+      -DPHAST_ROOT=/path/to/phast
    cmake --build build
-   cmake --install build --prefix /usr/local
+   cmake --install build
+   ```
 
-## License
+Here, PHAST_ROOT should point to the installation prefix of PHAST (e.g.,
+/opt/homebrew/opt/phast). 
 
-VINE is distributed under the **BSD 3-Clause License**, a permissive academic
-license that allows redistribution and modification provided that attribution
-is retained.
+### Documentation and support
 
-- You are free to use, modify, and redistribute VINE in source or binary form.
-- You must retain the copyright notice and license terms in any redistribution.
-- The name of the authors may not be used to endorse derived products without
-  permission.
+For usage of the main vine executable, and supporting programs, run them
+with --help.  For questions or bug reports, please use the GitHub issue
+tracker.
 
-See the file [`LICENSE`] for the full license text.
+### License
 
-VINE depends on the **PHAST** library, which is also distributed under a BSD
-3-Clause License.
+Both PHAST and VINE are distributed under the BSD 3-Clause License, a
+permissive academic license that allows redistribution and modification
+provided that attribution is retained. See the file [LICENSE] for details.
