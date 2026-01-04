@@ -3,5 +3,6 @@
 *.so
 *.dylib
 *.exe
+*.json
 *~
 .DS_Store
