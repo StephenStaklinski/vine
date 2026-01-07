@@ -584,6 +584,7 @@ double cpr_compute_log_likelihood(CrisprMutModel *cprmod, Vector *branchgrad) {
           
           deriv *= exp(expon);
           assert(isfinite(deriv));
+          assert(fabs(deriv) < 1.0e50); /* TEMPORARY CHECK */
           vec_set(branchgrad, n->id, vec_get(branchgrad, n->id) + deriv);
         
           /* now do the same for the derivative wrt the silent

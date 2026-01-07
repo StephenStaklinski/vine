@@ -223,7 +223,7 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn,
     else
       avell = nj_elbo_montecarlo(mod, mmvn, data, nminibatch, avegrad,
                                  ave_nuis_grad, &ave_lprior, &avemigll);
-
+    
     /* TEMPORARY: compare taylor and monte carlo for debugging */
     
     /* { */

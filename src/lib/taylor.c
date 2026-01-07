@@ -38,6 +38,7 @@ TaylorData *tay_new(CovarData *data) {
   
   /* allocate workspace memory */
   td->base_grad = vec_new(td->nbranches);
+  vec_zero(td->base_grad);
   td->Jbx = mat_new(td->nbranches, td->fulld);
   td->JbxT = mat_new(td->fulld, td->nbranches);
   td->tmp_x1 = vec_new(td->fulld);
@@ -201,6 +202,7 @@ double nj_elbo_taylor(TreeModel *mod, multi_MVN *mmvn, CovarData *data,
   
   /* add 1/2 T to log likelihood and scale gradient by 1/2; always used cached versions */
   ll += 0.5 * td->T_cache;
+
   /* add covariance part of gradient into grad */
   int offset = data->taylor->fulld; 
   for (int j = 0; j < sigdim; j++)
@@ -294,7 +296,7 @@ void tay_HVP(Vector *out, Vector *v, void *dat)
   /* out = (g1 - g0)/eps_eff */
   vec_minus_eq(out, g0);
   vec_scale(out, 1.0 / eps_eff);
-
+    
   /* Restore original branch lengths */
   tr_restore_branch_lengths(mod->tree, origbl);
 
