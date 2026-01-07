@@ -8,6 +8,11 @@ project(vine
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
+# allows use of upper case PHAST_ROOT
+if(POLICY CMP0144)
+  cmake_policy(SET CMP0144 NEW)
+endif()
+
 # ---- PHAST dependency --------------------------------------------------
 # Users/packagers provide -DPHAST_ROOT=/path/to/prefix (the install prefix)
 set(PHAST_ROOT "" CACHE PATH "PHAST install prefix (contains lib/cmake/phast)")
