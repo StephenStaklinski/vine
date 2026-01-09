@@ -221,6 +221,8 @@ double cpr_compute_log_likelihood(CrisprMutModel *cprmod, Vector *branchgrad) {
     cprmod->deriv_leading_t = 0.0;
     cprmod->deriv_sil = 0.0;
   }
+  /* keep track of whether underflow occurred for calling code */
+  cprmod->underflow = FALSE;
 
   cprmod->mod->tree->dparent = cprmod->leading_t; /* update length of leading branch */
   
@@ -422,6 +424,9 @@ double cpr_compute_log_likelihood(CrisprMutModel *cprmod, Vector *branchgrad) {
 
     ll += (log(total_prob) + vec_get(lscale, cprmod->mod->tree->id));
 
+    if (vec_get(lscale, cprmod->mod->tree->id) < 4 * lscaling_threshold)
+      cprmod->underflow = TRUE; /* major underflow; typically indicates degenerate tree */
+    
     /* to compute gradients efficiently, need to make a second pass
        across the tree to compute "outside" probabilities */
     if (branchgrad != NULL) {

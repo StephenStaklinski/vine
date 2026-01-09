@@ -54,6 +54,9 @@ typedef struct {
   double leading_t; /* length of leading branch to root */
   double deriv_leading_t; /* latest partial deriv of leading branch
                               len */
+  unsigned int underflow; /* major underflow occurred during last
+                             likelihood calculation; typically
+                             indicates degenerate tree */
 } CrisprMutModel;
 
 /* auxiliary data used to keep track of restricted ancestral state
