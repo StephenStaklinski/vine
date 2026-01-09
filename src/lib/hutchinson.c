@@ -59,6 +59,12 @@ double hutch_tr(HVP_fun   Hfun,
   return accum / nprobe;
 }
 
+/* soft clipping function for below */
+static inline double soft_clip(double x, double cap) {
+    /* Smooth, symmetric clipping */
+    return cap * tanh(x / cap);
+}
+
 /* Generalization of above that optionally computes gradient also.  In
    particular, compute,
 
@@ -115,7 +121,8 @@ double hutch_tr_plus_grad(
     Hfun(Hu, u, userdata);
 
     /* accumulate trace component: zᵀ H u */
-    accum += vec_inner_prod(z, Hu);
+    double tr_k = vec_inner_prod(z, Hu);
+    accum += soft_clip(tr_k, HUTCH_TRACE_CAP);
 
     /* If no gradient requested, skip this part */
     if (grad_sigma == NULL)
@@ -136,8 +143,14 @@ double hutch_tr_plus_grad(
     Sigmafun(tmp, q_lat, userdata);
 
     /* accumulate bilinear Σ-gradient: p_latᵀ (∂Σ) q_lat */
+    double grad_scale = 1.0; /* rescale for cap if needed */
+    if (fabs(tr_k) > HUTCH_GRAD_CAP)
+      grad_scale = HUTCH_GRAD_CAP / fabs(tr_k);
+
     SigmaGradFun(grad_sigma, p_lat, q_lat, userdata);
 
+    /* rescale just-added contribution */
+    vec_scale(grad_sigma, grad_scale);
   }
 
   /* Scale gradient by 1/nprobe */

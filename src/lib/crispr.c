@@ -241,7 +241,7 @@ double cpr_compute_log_likelihood(CrisprMutModel *cprmod, Vector *branchgrad) {
     List *Pt = lst_get_ptr(cprmod->Pt, site);
     MarkovMatrix *leading_Pt;
     double this_deriv_sil;
-    
+
     nstates = cprmod->mut->sitewise_nstates[site] + 1; /* have to allow for silent state */
     silst = nstates - 1; /* silent state will always be last */
 
@@ -387,10 +387,8 @@ double cpr_compute_log_likelihood(CrisprMutModel *cprmod, Vector *branchgrad) {
               pL[pstate][n->id] = (totl / scaling_threshold) * (totr / scaling_threshold);
           }
           if (pass == 0 && max_totl > 0.0 && max_totr > 0.0 &&
-              (max_totl < scaling_threshold || max_totr < scaling_threshold)) {
+              (max_totl < scaling_threshold || max_totr < scaling_threshold)) 
             rescale = TRUE; /* will trigger second pass */
-            /* fprintf(stderr, "RESCALING needed at node %d\n", n->id); */
-          }            
         }
 
         /* TEMPORARY CHECK */
@@ -402,10 +400,13 @@ double cpr_compute_log_likelihood(CrisprMutModel *cprmod, Vector *branchgrad) {
         /* assert(isfinite(checksum) && checksum > 0.0);        */
 
         /* deal with nodewise scaling */
-        vec_set(lscale, n->id, vec_get(lscale, n->lchild->id) +
-                vec_get(lscale, n->rchild->id));
+        vec_set(lscale, n->id,
+                vec_get(lscale, n->lchild->id) +
+                    vec_get(lscale, n->rchild->id));
+
         if (rescale == TRUE)  /* have to rescale for all states */
-          vec_set(lscale, n->id, vec_get(lscale, n->id) + 2 * lscaling_threshold);
+          vec_set(lscale, n->id,
+                  vec_get(lscale, n->id) + 2 * lscaling_threshold);
       }
     }
   
@@ -581,10 +582,9 @@ double cpr_compute_log_likelihood(CrisprMutModel *cprmod, Vector *branchgrad) {
                        pL[cstate][n->id] * mat_get(grad_mat, pstate, cstate);
             }
           }       
-          
+          /* adjust for all relevant scale terms */
           deriv *= exp(expon);
           assert(isfinite(deriv));
-          assert(fabs(deriv) < 1.0e50); /* TEMPORARY CHECK */
           vec_set(branchgrad, n->id, vec_get(branchgrad, n->id) + deriv);
         
           /* now do the same for the derivative wrt the silent

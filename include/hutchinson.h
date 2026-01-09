@@ -17,6 +17,10 @@
 #include <stdlib.h>
 #include <phast/vector.h>
 
+/* soft clipping caps for numerical stability */
+#define HUTCH_TRACE_CAP 1e6
+#define HUTCH_GRAD_CAP  1e6
+
 /* Computes out = H v for arbitrary vector v using Pearlmutter
    directional derivative.  data = auxiliary data */
 typedef void (*HVP_fun)(Vector *out, Vector *v, void *data);
