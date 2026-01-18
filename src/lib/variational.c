@@ -227,7 +227,7 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn,
     if (data->taylor != NULL) {
       avell = nj_elbo_taylor(mod, mmvn, data, avegrad, ave_nuis_grad,
                              &ave_lprior, &avemigll);
-      if (data->crispr_mod->underflow == TRUE) {
+      if (data->crispr_mod != NULL && data->crispr_mod->zero_likl == TRUE) {
         fprintf(stderr, "WARNING: Taylor approximation produced invalid likelihood; "
                 "switching to Monte Carlo.\n");
         reenable_taylor_t = t + 10;

@@ -41,7 +41,7 @@ typedef struct {
   int nsites;
   int ncells;
   TreeModel *mod; /* encapsulates tree with branch lengths 
-                     and some auxiliary data */
+  and some auxiliary data */
   CrisprMutTable *mut;
   int nstates;
   List *Pt;
@@ -50,13 +50,12 @@ typedef struct {
   List *sitewise_mutrates; /* one vector per site */
   double sil_rate;  /* rate of silencing */
   double deriv_sil; /* latest partial deriv of log likelihood wrt
-                       sil_rate */
+  sil_rate */
   double leading_t; /* length of leading branch to root */
   double deriv_leading_t; /* latest partial deriv of leading branch
-                              len */
-  unsigned int underflow; /* major underflow occurred during last
-                             likelihood calculation; typically
-                             indicates degenerate tree */
+  len */
+  unsigned int zero_likl; /* likelihood evaluated to zero; typically
+                             indicates degenerate tree */ 
 } CrisprMutModel;
 
 /* auxiliary data used to keep track of restricted ancestral state

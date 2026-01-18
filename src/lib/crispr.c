@@ -221,8 +221,8 @@ double cpr_compute_log_likelihood(CrisprMutModel *cprmod, Vector *branchgrad) {
     cprmod->deriv_leading_t = 0.0;
     cprmod->deriv_sil = 0.0;
   }
-  /* keep track of whether underflow occurred for calling code */
-  cprmod->underflow = FALSE;
+  /* keep track of whether zero likelihood occurred for calling code */
+  cprmod->zero_likl = FALSE;
 
   cprmod->mod->tree->dparent = cprmod->leading_t; /* update length of leading branch */
   
@@ -362,22 +362,11 @@ double cpr_compute_log_likelihood(CrisprMutModel *cprmod, Vector *branchgrad) {
               lcstate = lst_get_int(lchild_states, j);
               totl += pL[lcstate][n->lchild->id] *
                       mm_get_floor(lsubst_mat, pstate, lcstate);
-
-              /* fprintf(stderr, "n=%d pstate=%d lcstate=%d pL=%.4e subst=%.4e totl=%.4e\n", */
-              /*         n->id, pstate, lcstate, */
-              /*         pL[lcstate][n->lchild->id], */
-              /*         mm_get_floor(lsubst_mat, pstate, lcstate), */
-              /*         totl); */
             }
             for (k = 0; k < lst_size(rchild_states); k++) {
               rcstate = lst_get_int(rchild_states, k);
               totr += pL[rcstate][n->rchild->id] *
                       mm_get_floor(rsubst_mat, pstate, rcstate);
-              /* fprintf(stderr, "n=%d pstate=%d rcstate=%d pL=%.4e subst=%.4e totr=%.4e\n", */
-              /*         n->id, pstate, rcstate, */
-              /*         pL[rcstate][n->rchild->id], */
-              /*         mm_get_floor(rsubst_mat, pstate, rcstate), */
-              /*         totr); */
             }
 
             if (pass == 0) {
@@ -389,8 +378,14 @@ double cpr_compute_log_likelihood(CrisprMutModel *cprmod, Vector *branchgrad) {
               pL[pstate][n->id] = (totl / scaling_threshold) * (totr / scaling_threshold);
           }
           if (pass == 0 && max_totl > 0.0 && max_totr > 0.0 &&
-              (max_totl < scaling_threshold || max_totr < scaling_threshold)) 
+              (max_totl < scaling_threshold || max_totr < scaling_threshold))
             rescale = TRUE; /* will trigger second pass */
+
+          /* also need to check for effectively zero likelihood;
+             requires special handling by calling code */
+          if (max_totl <= lst_size(lchild_states) * CPR_PFLOOR ||
+              max_totr <= lst_size(rchild_states) * CPR_PFLOOR)
+	    cprmod->zero_likl = TRUE; 
         }
 
         /* TEMPORARY CHECK */
@@ -424,8 +419,8 @@ double cpr_compute_log_likelihood(CrisprMutModel *cprmod, Vector *branchgrad) {
 
     ll += (log(total_prob) + vec_get(lscale, cprmod->mod->tree->id));
 
-    if (vec_get(lscale, cprmod->mod->tree->id) < 4 * lscaling_threshold)
-      cprmod->underflow = TRUE; /* major underflow; typically indicates degenerate tree */
+    /* if (vec_get(lscale, cprmod->mod->tree->id) < 4 * lscaling_threshold) */
+    /*   cprmod->zero_likl = TRUE; */ /* major underflow; typically indicates degenerate tree */
     
     /* to compute gradients efficiently, need to make a second pass
        across the tree to compute "outside" probabilities */
