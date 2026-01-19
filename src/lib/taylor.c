@@ -168,8 +168,10 @@ double nj_elbo_taylor(TreeModel *mod, multi_MVN *mmvn, CovarData *data,
   unsigned int at_floor = nj_var_at_floor(mmvn, data); 
   
   if (do_refresh) {
-    if (at_floor)  /* set T equal to zero but allow gradient to stay negative */
+    if (at_floor) { /* set T equal to zero but allow gradient to stay negative */
       td->T_cache = 0.0;
+      vec_zero(td->siggrad_cache);
+    }
     else {
       Vector *grad_sigma = vec_new(sigdim);
       vec_zero(grad_sigma);
@@ -284,10 +286,46 @@ void tay_HVP(Vector *out, Vector *v, void *dat)
   double eps_eff = DERIV_EPS;
   if (maxabs > 1.0) eps_eff /= maxabs;     /* keep max perturbation ~ DERIV_EPS */
 
-  /* Apply perturbation */
+  /* avoid hitting the branch-length floor clamp (1e-6).
+     If any component would push b_i below the floor, shrink eps. */
+  const double bl_floor = 1e-6;
+  const double safety   = 0.5;   /* stay away from the kink */
+
+  /* Backtrack eps to avoid clamp-triggering perturbations */
+  for (int attempt = 0; attempt < 8; attempt++) {
+    int would_clamp = 0;
+
+    for (int i = 0; i < v->size; i++) {
+      double vi = vec_get(v, i);
+      if (vi < 0.0) {
+        double bi = vec_get(origbl, i);
+        double newb = bi + eps_eff * vi;
+        if (newb <= bl_floor) {
+          would_clamp = 1;
+          break;
+        }
+      }
+    }
+
+    if (!would_clamp)
+      break;                /* eps_eff is safe */
+
+    eps_eff *= safety;      /* shrink and retry */
+  }
+
+  /* If eps_eff gets absurdly small, bail out with zero HVP (better than spikes) */
+  if (eps_eff < 1e-16) {
+    vec_zero(out);
+    tr_restore_branch_lengths(mod->tree, origbl);
+    vec_free(origbl);
+    return;
+  }
+
+  /* ---------- apply perturbation and compute gradient ---------- */
+
   tr_incr_branch_lengths(mod->tree, v, eps_eff);
 
-  /* Compute perturbed gradient g1 */
+  /* Compute perturbed gradient g1 into out */
   if (data->crispr_mod != NULL)
     cpr_compute_log_likelihood(data->crispr_mod, out);
   else
@@ -296,13 +334,13 @@ void tay_HVP(Vector *out, Vector *v, void *dat)
   /* out = (g1 - g0)/eps_eff */
   vec_minus_eq(out, g0);
   vec_scale(out, 1.0 / eps_eff);
-    
+
   /* Restore original branch lengths */
   tr_restore_branch_lengths(mod->tree, origbl);
 
   vec_free(origbl);
-  /* vec_free(g0); */
 }
+
 
 /* Compute S_b * v, where S_b = Jbx * Sigma_x * Jbx^T.
    v is a vector in branch-length space (dimension = nbranches).
@@ -606,7 +644,7 @@ void tay_sigma_grad_mult(Vector *out, Vector *p, Vector *q, multi_MVN *mmvn,
   /* CONST and DIST share a scalar λ */
   if (data->type == CONST || data->type == DIST) {
     double dotpq = vec_inner_prod(p, q);
-    vec_set(out, 0, vec_get(out, 0) + data->lambda * dotpq);
+    vec_set(out, 0, vec_get(out, 0) + dotpq);
     return;
   }
 

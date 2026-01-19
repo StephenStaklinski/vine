@@ -106,9 +106,12 @@ double hutch_tr_plus_grad(
   Vector *q_lat  = vec_new(dim_lat);     /* Jᵀ z */
   Vector *p_lat = vec_new(dim_lat);      /* Jᵀ (H z) */
   Vector *tmp    = vec_new(dim_lat);     /* Σ u_lat       */
-
-  if (grad_sigma != NULL) 
+  Vector *g_k    = NULL;                 /* per-probe gradient */
+  
+  if (grad_sigma != NULL) {
     vec_zero(grad_sigma);
+    g_k = vec_new(grad_sigma->size); /* per-probe gradient */
+  }
   
   for (int k = 0; k < nprobe; k++) {
 
@@ -144,19 +147,27 @@ double hutch_tr_plus_grad(
     Sigmafun(tmp, q_lat, userdata);
 
     /* accumulate bilinear Σ-gradient: p_latᵀ (∂Σ) q_lat */
-    double grad_scale = 1.0; /* rescale for cap if needed */
-    if (fabs(tr_k) > HUTCH_GRAD_CAP)
-      grad_scale = HUTCH_GRAD_CAP / fabs(tr_k);
+    /* compute scaling induced by clipping */
+    double t = tanh(tr_k / HUTCH_TRACE_CAP);
+    double grad_scale = 1.0 - t * t; /* sech^2(tr_k/cap) */
 
-    SigmaGradFun(grad_sigma, p_lat, q_lat, userdata);
+    vec_zero(g_k);
 
-    /* rescale just-added contribution */
-    vec_scale(grad_sigma, grad_scale);
+    /* g_k gets only this probe's contribution */
+    SigmaGradFun(g_k, p_lat, q_lat, userdata);
+
+    /* apply any per-probe scaling */
+    vec_scale(g_k, grad_scale);
+
+    /* accumulate */
+    vec_plus_eq(grad_sigma, g_k);
   }
 
   /* Scale gradient by 1/nprobe */
-  if (grad_sigma != NULL) 
-    vec_scale(grad_sigma, 1.0 / nprobe); 
+  if (grad_sigma != NULL) {
+    vec_scale(grad_sigma, 1.0 / nprobe);
+    vec_free(g_k);
+  }
 
   vec_free(z);
   vec_free(u);
