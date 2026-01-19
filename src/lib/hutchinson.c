@@ -126,7 +126,7 @@ double hutch_tr_plus_grad(
 
     /* accumulate trace component: zᵀ H u */
     double tr_k = vec_inner_prod(z, Hu);
-    accum += soft_clip(tr_k, HUTCH_TRACE_CAP);
+    accum += soft_clip(tr_k, HUTCH_PROBE_CAP);
 
     /* If no gradient requested, skip this part */
     if (grad_sigma == NULL)
@@ -148,7 +148,7 @@ double hutch_tr_plus_grad(
 
     /* accumulate bilinear Σ-gradient: p_latᵀ (∂Σ) q_lat */
     /* compute scaling induced by clipping */
-    double t = tanh(tr_k / HUTCH_TRACE_CAP);
+    double t = tanh(tr_k / HUTCH_PROBE_CAP);
     double grad_scale = 1.0 - t * t; /* sech^2(tr_k/cap) */
 
     vec_zero(g_k);

@@ -185,6 +185,23 @@ double nj_elbo_taylor(TreeModel *mod, multi_MVN *mmvn, CovarData *data,
                                     data->taylor->nbranches, data->taylor->fulld,
                                     NHUTCH_SAMPLES, grad_sigma);
 
+      /* make this robust to extreme values */
+      if (!isfinite(T)) {
+	/* reject refresh entirely */
+	vec_free(grad_sigma);
+	goto skip_refresh;
+      }
+
+      /* cap T to a reasonable range before it contaminates the EMA */
+      if (T >  HUTCH_CACHE_CAP) T =  HUTCH_CACHE_CAP;
+      if (T < -HUTCH_CACHE_CAP) T = -HUTCH_CACHE_CAP;
+
+      /* reject large jumps */
+      if (td->iter > td->warmup && fabs(T - td->T_cache) > HUTCH_CACHE_JUMP_CAP) {
+	vec_free(grad_sigma);
+	goto skip_refresh;
+      }
+      
       if (td->iter == td->warmup) {
         td->T_cache = T; /* initialize on first update */
         vec_copy(td->siggrad_cache, grad_sigma);
@@ -199,6 +216,8 @@ double nj_elbo_taylor(TreeModel *mod, multi_MVN *mmvn, CovarData *data,
       }
       vec_free(grad_sigma);
     }
+  skip_refresh:
+    ;
   }
   td->iter++;
   
@@ -335,6 +354,11 @@ void tay_HVP(Vector *out, Vector *v, void *dat)
   vec_minus_eq(out, g0);
   vec_scale(out, 1.0 / eps_eff);
 
+  /* cap HVP norm to prevent rare FD blow-ups */
+  double nrm = vec_norm(out);
+  if (isfinite(nrm) && nrm > TAYLOR_HVP_NORM_CAP) 
+    vec_scale(out, TAYLOR_HVP_NORM_CAP / nrm);
+  
   /* Restore original branch lengths */
   tr_restore_branch_lengths(mod->tree, origbl);
 

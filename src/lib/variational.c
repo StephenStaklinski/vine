@@ -272,11 +272,6 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn,
     /* lastelb = elb; */
     elb = avell + ave_lprior - kld + penalty + avemigll;
 
-    /* sometimes the second-order term in the Taylor expansion blows
-       up; eliminate it in this case and hope things settle down */
-    if (data->taylor != NULL && data->taylor->T_cache > avell * 0.05)
-          elb -= 0.5 * data->taylor->T_cache; /* subtract second-order term */		
-    
     if (elb > bestelb && (sd->full_grad_now || data->crispr_mod != NULL)) {
       bestelb = elb;
       bestll = avell;  /* not necessarily best ll but ll corresponding to bestelb */
