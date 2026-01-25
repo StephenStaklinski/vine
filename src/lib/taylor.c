@@ -185,6 +185,8 @@ double nj_elbo_taylor(TreeModel *mod, multi_MVN *mmvn, CovarData *data,
                                     data->taylor->nbranches, data->taylor->fulld,
                                     NHUTCH_SAMPLES, grad_sigma);
 
+      double T_raw = T;
+            
       /* make this robust to extreme values */
       if (!isfinite(T)) {
 	/* reject refresh entirely */
@@ -193,11 +195,20 @@ double nj_elbo_taylor(TreeModel *mod, multi_MVN *mmvn, CovarData *data,
       }
 
       /* cap T to a reasonable range before it contaminates the EMA */
-      if (T >  HUTCH_CACHE_CAP) T =  HUTCH_CACHE_CAP;
-      if (T < -HUTCH_CACHE_CAP) T = -HUTCH_CACHE_CAP;
-
+      double scale = 1.0;
+      if (T > HUTCH_CACHE_CAP) {
+        scale = HUTCH_CACHE_CAP / T;
+        T = HUTCH_CACHE_CAP;
+      }
+      if (T < -HUTCH_CACHE_CAP) {
+        scale = -HUTCH_CACHE_CAP / T;
+        T = -HUTCH_CACHE_CAP;
+      }
+      if (scale != 1.0)
+	vec_scale(grad_sigma, scale);
+			
       /* reject large jumps */
-      if (td->iter > td->warmup && fabs(T - td->T_cache) > HUTCH_CACHE_JUMP_CAP) {
+      if (td->iter > td->warmup && fabs(T_raw - td->T_cache) > HUTCH_CACHE_JUMP_CAP) {
 	vec_free(grad_sigma);
 	goto skip_refresh;
       }

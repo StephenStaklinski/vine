@@ -124,8 +124,14 @@ double hutch_tr_plus_grad(
     /* Hu = H u */
     Hfun(Hu, u, userdata);
 
+    double hu_norm = vec_norm(Hu);
+    if (!isfinite(hu_norm) || hu_norm > HUTCH_HVP_NORM_CAP)
+      continue;  /* skip this probe entirely */
+
     /* accumulate trace component: zᵀ H u */
     double tr_k = vec_inner_prod(z, Hu);
+    if (!isfinite(tr_k)) continue;
+    
     accum += soft_clip(tr_k, HUTCH_PROBE_CAP);
 
     /* If no gradient requested, skip this part */
@@ -142,9 +148,6 @@ double hutch_tr_plus_grad(
 
     /* p_lat = Jᵀ (H z) */
     JTfun(p_lat, Hz, userdata);
-
-    /* optional: tmp = Σ q_lat (not strictly needed for grad) */
-    Sigmafun(tmp, q_lat, userdata);
 
     /* accumulate bilinear Σ-gradient: p_latᵀ (∂Σ) q_lat */
     /* compute scaling induced by clipping */
