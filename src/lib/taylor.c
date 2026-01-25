@@ -165,54 +165,23 @@ double nj_elbo_taylor(TreeModel *mod, multi_MVN *mmvn, CovarData *data,
   int do_refresh = (td->iter >= td->warmup) && ((td->iter - td->warmup) % td->period == 0);
 
   /* if variance has hit its floor, there's no sense in updating the trace */
-  unsigned int at_floor = nj_var_at_floor(mmvn, data); 
+  if (do_refresh && nj_var_at_floor(mmvn, data))
+    do_refresh = FALSE;
   
   if (do_refresh) {
-    if (at_floor) { /* set T equal to zero but allow gradient to stay negative */
-      td->T_cache = 0.0;
-      vec_zero(td->siggrad_cache);
-    }
-    else {
-      Vector *grad_sigma = vec_new(sigdim);
-      vec_zero(grad_sigma);
+    Vector *grad_sigma = vec_new(sigdim);
+    vec_zero(grad_sigma);
 
-      /* build Jacobians Jbx and JbxT once at the mean point */
-      tay_prep_jacobians(data->taylor, mod, mu);
+    /* build Jacobians Jbx and JbxT once at the mean point */
+    tay_prep_jacobians(data->taylor, mod, mu);
   
-      /* Compute scalar T and its covariance gradient */
-      double T = hutch_tr_plus_grad(tay_HVP, tay_SVP, tay_JTfun, tay_Sigmafun,
-                                    tay_SigmaGradfun, data->taylor,
-                                    data->taylor->nbranches, data->taylor->fulld,
-                                    NHUTCH_SAMPLES, grad_sigma);
+    /* Compute scalar T and its covariance gradient */
+    double T = hutch_tr_plus_grad(tay_HVP, tay_SVP, tay_JTfun, tay_Sigmafun,
+                                  tay_SigmaGradfun, data->taylor,
+                                  data->taylor->nbranches, data->taylor->fulld,
+                                  NHUTCH_SAMPLES, grad_sigma);
 
-      double T_raw = T;
-            
-      /* make this robust to extreme values */
-      if (!isfinite(T)) {
-	/* reject refresh entirely */
-	vec_free(grad_sigma);
-	goto skip_refresh;
-      }
-
-      /* cap T to a reasonable range before it contaminates the EMA */
-      double scale = 1.0;
-      if (T > HUTCH_CACHE_CAP) {
-        scale = HUTCH_CACHE_CAP / T;
-        T = HUTCH_CACHE_CAP;
-      }
-      if (T < -HUTCH_CACHE_CAP) {
-        scale = -HUTCH_CACHE_CAP / T;
-        T = -HUTCH_CACHE_CAP;
-      }
-      if (scale != 1.0)
-	vec_scale(grad_sigma, scale);
-			
-      /* reject large jumps */
-      if (td->iter > td->warmup && fabs(T_raw - td->T_cache) > HUTCH_CACHE_JUMP_CAP) {
-	vec_free(grad_sigma);
-	goto skip_refresh;
-      }
-      
+    if (isfinite(T)) { /* guard against runaway values */
       if (td->iter == td->warmup) {
         td->T_cache = T; /* initialize on first update */
         vec_copy(td->siggrad_cache, grad_sigma);
@@ -225,10 +194,9 @@ double nj_elbo_taylor(TreeModel *mod, multi_MVN *mmvn, CovarData *data,
           vec_set(td->siggrad_cache, j, (1.0 - td->beta)*old + td->beta*nw);
         }
       }
-      vec_free(grad_sigma);
     }
-  skip_refresh:
-    ;
+
+    vec_free(grad_sigma);
   }
   td->iter++;
   
