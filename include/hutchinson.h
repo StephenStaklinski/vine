@@ -18,7 +18,7 @@
 #include <phast/vector.h>
 
 /* soft clipping caps for numerical stability */
-#define HUTCH_PROBE_CAP 1000
+#define HUTCH_PROBE_CAP 100
 #define HUTCH_HVP_NORM_CAP 1.0e4 
 
 /* Computes out = H v for arbitrary vector v using Pearlmutter

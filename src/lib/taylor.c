@@ -338,9 +338,10 @@ void tay_HVP(Vector *out, Vector *v, void *dat)
 
   /* ---------- apply perturbation and compute gradient ---------- */
 
-   /* randomly choose forward or backward step so unbiased in
-      expectation */
-  double sign = (rand() & 1) ? 1.0 : -1.0;
+  /* alternate between forward or backward steps so unbiased in
+     expectation */
+  static int sign = 1;
+  sign = -sign;
   double signed_eps = sign * eps_eff;
 
   tr_incr_branch_lengths(mod->tree, v, signed_eps);

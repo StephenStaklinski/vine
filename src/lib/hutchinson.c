@@ -60,6 +60,10 @@ double hutch_tr(HVP_fun   Hfun,
   return accum / nprobe;
 }
 
+static inline double rademacher(void) {
+  return (rand() >= RAND_MAX / 2) ? 1.0 : -1.0;
+}
+
 /* soft clipping function for below */
 static inline double soft_clip(double x, double cap) {
     /* Smooth, symmetric clipping */
@@ -115,8 +119,9 @@ double hutch_tr_plus_grad(
   
   for (int k = 0; k < nprobe; k++) {
 
-    /* z ~ N(0, I) or Rademacher */
-    mvn_sample_std(z);
+    /* z ~ Rademacher */
+    for (int i = 0; i < z->size; i++)
+      vec_set(z, i, rademacher());
 
     /* u = S z */
     Sfun(u, z, userdata);
