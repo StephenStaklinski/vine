@@ -321,7 +321,12 @@ void tay_HVP(Vector *out, Vector *v, void *dat)
 
   /* ---------- apply perturbation and compute gradient ---------- */
 
-  tr_incr_branch_lengths(mod->tree, v, eps_eff);
+   /* randomly choose forward or backward step so unbiased in
+      expectation */
+  double sign = (rand() & 1) ? 1.0 : -1.0;
+  double signed_eps = sign * eps_eff;
+
+  tr_incr_branch_lengths(mod->tree, v, signed_eps);
 
   /* Compute perturbed gradient g1 into out */
   if (data->crispr_mod != NULL)
@@ -331,7 +336,7 @@ void tay_HVP(Vector *out, Vector *v, void *dat)
 
   /* out = (g1 - g0)/eps_eff */
   vec_minus_eq(out, g0);
-  vec_scale(out, 1.0 / eps_eff);
+  vec_scale(out, 1.0 / signed_eps);
 
   /* cap HVP norm to prevent rare FD blow-ups */
   double nrm = vec_norm(out);
