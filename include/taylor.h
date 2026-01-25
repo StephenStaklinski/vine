@@ -25,8 +25,6 @@
                               estimator of trace of Hessian */
 
 /* caps to prevent extreme values on trace term */
-#define HUTCH_CACHE_CAP 200.0
-#define HUTCH_CACHE_JUMP_CAP (0.25 * HUTCH_CACHE_CAP)
 #define TAYLOR_HVP_NORM_CAP 1.0e4
 
 typedef struct taylor_data {

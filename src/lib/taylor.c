@@ -233,6 +233,22 @@ void tr_save_branch_lengths(TreeNode *root, Vector *bl) {
   }
 }
 
+/* smooth floor function to avoid discontinuous derivatives */
+static inline double smooth_floor(double x, double xmin) {
+  /* softness parameter: larger = sharper floor */
+  const double alpha = 50.0;   /* safe default */
+
+  double z = alpha * (x - xmin);
+
+  /* numerically stable softplus */
+  if (z > 30.0)
+    return x;                  /* already well above floor */
+  else if (z < -30.0)
+    return xmin;               /* well below floor */
+  else
+    return xmin + log1p(exp(z)) / alpha;
+}
+
 /* adjust branch lengths by incrementing scaled values in vector bl;
    excludes root */
 static inline
@@ -241,8 +257,9 @@ void tr_incr_branch_lengths(TreeNode *root, Vector *bl, double scale) {
   for (int i = 0; i < bl->size; i++) {
     TreeNode *n = lst_get_ptr(root->nodes, i);
     n->dparent += (scale * vec_get(bl, i));
-    if (n->dparent < 1e-6)
-      n->dparent = 1e-6; /* prohibit zero or negative lengths */
+    double raw = n->dparent + scale * vec_get(bl, i);
+    /* smooth floor instead of hard clamp */
+    n->dparent = smooth_floor(raw, 1.0e-6);
   }
 }
 
