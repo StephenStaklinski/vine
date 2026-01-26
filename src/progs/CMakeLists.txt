@@ -12,6 +12,15 @@ foreach(tgt vine evalTrees)
     endif()
 endforeach()
 
+# Read version file and strip whitespace
+file(READ "${CMAKE_SOURCE_DIR}/version" VINE_VERSION_RAW)
+string(STRIP "${VINE_VERSION_RAW}" VINE_VERSION)
+message(STATUS "VINE_VERSION='${VINE_VERSION}'")
+
+# add to vine compile target
+target_compile_definitions(vine PRIVATE VINE_VERSION="${VINE_VERSION}")
+
+
 # Install all progs into bin/
 install(TARGETS
   vine

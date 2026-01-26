@@ -27,6 +27,7 @@
 #include <tree_prior.h>
 #include <migration.h>
 #include <multiDAG.h>
+#include <version.h>
 #include "vine.help"
 
 #define DEFAULT_NSAMPLES 100
@@ -118,11 +119,12 @@ int main(int argc, char *argv[]) {
     {"migration", 1, 0, 'G'},
     {"primary", 1, 0, '1'},
     {"montecarlo", 0, 0, 'y'},
+    {"version", 0, 0, 'x'},
     {"help", 0, 0, 'h'},
     {0, 0, 0, 0}
   };
 
-  while ((c = getopt_long(argc, argv, "b:B:c:d:D:egG:hHi:FZjJkK:l:L:m:M:n:No:v:r:Rt:T:VW:S:s:CY:yPp:", long_opts, &opt_idx)) != -1) {
+  while ((c = getopt_long(argc, argv, "b:B:c:d:D:egG:hHi:FZjJkK:l:L:m:M:n:No:v:r:Rt:T:VW:S:s:CY:yPp:x", long_opts, &opt_idx)) != -1) {
     switch (c) {
     case 'b':
       batchsize = atoi(optarg);
@@ -292,6 +294,9 @@ int main(int argc, char *argv[]) {
     case 'y':
       use_taylor = FALSE;
       break;
+    case 'x':
+      printf("VINE version %s\n", VINE_VERSION);
+      exit(0);
     case 'h':
       printf("%s", HELP); 
       exit(0);
