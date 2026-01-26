@@ -2,28 +2,29 @@ PROGRAM: vine [Variational Inference with Node Embedding]
 
 USAGE: vine [OPTIONS] alignment.fa > trees.nwk
 
-DESCRIPTION: Infer a posterior distribution of phylogenetic trees using a
-neighbor-joining- or UPGMA-based variational approximation. By default,
-outputs trees sampled from approximate posterior, with one Newick-formatted
-tree per line.  If the --nj-only option is selected, a single tree will be
-estimated by NJ (or UPGMA) and output.  The --ultrametric option forces use
-of UPGMA rather than NJ. Supports analysis of either DNA alignments or
-mutation matrices from CRISPR-based cell lineage barcoding
-experiments. Initial pairwise distances may be specified either via the
-alignment/mutation matrix (the default) or by providing a starting
-distance matrix (--distances) or starting tree (--tree).  Variational
-optimization is by stochastic gradient ascent using the Adam algorithm. By
-default, an embedding in a Euclidean space is used, but a hyperbolic
-geometry can be used instead by selecting the --hyperbolic option.
+DESCRIPTION: Infer a posterior distribution of phylogenetic trees
+using a neighbor-joining- or UPGMA-based variational approximation. By
+default, outputs trees sampled from approximate posterior, with one
+Newick-formatted tree per line.  If the --nj-only option is selected,
+a single tree will be estimated by NJ (or UPGMA) and output.  The
+--ultrametric option forces use of UPGMA rather than NJ. Supports
+analysis of either DNA alignments or mutation matrices from
+CRISPR-based cell lineage barcoding experiments. Initial pairwise
+distances may be specified either via the alignment/mutation matrix
+(the default) or by providing a starting distance matrix (--distances)
+or starting tree (--tree).  Variational optimization is by stochastic
+gradient ascent using the Adam algorithm. By default, an embedding in
+a Euclidean space is used, but a hyperbolic geometry can be used
+instead by selecting the --hyperbolic option.  By default, the ELBO is
+estimated using a Taylor approximation but Monte Carlo estimation can
+be activated using --montecarlo.
 
 TYPICAL COMMANDS:
     For DNA:
-        vine myalignment.fa --logfile log --hky85 --tree starting-tree.nwk \
-            > samples.nwk
+        vine myalignment.fa --logfile log --hky85 > samples.nwk
 
     For CRISPR:
-        vine mymatrix.tsv --format CRISPR --logfile log --tree \
-            starting-crispr.nwk > samples-crispr.nwk
+        vine mymatrix.tsv --format CRISPR --logfile log > samples-crispr.nwk
         
 MAIN OPTIONS:
     --help, -h
@@ -31,7 +32,7 @@ MAIN OPTIONS:
         
     --dimensionality, -D <D>
         Set dimensionality of the space in which taxa are represented to
-        <D> (default 5).  Higher values will allow for richer
+        <D> (default 6).  Higher values will allow for richer
         representations of phylogenies but typically take more time to
         converge.  Embedding can be in either a Euclidean (the default) or
         a hyperbolic (see --hyperbolic) space. 
@@ -98,31 +99,28 @@ MAIN OPTIONS:
         --crispr-modtype.
         
 OPTIMIZATION:
-    --batchsize, -b <N>
-       Set mini-batch size in stochastic gradient ascent to <N> (default
-       10).  Here the minibatch size is the number of phylogenetic trees
-       sampled from the approximate posterior for each update of the
-       variational parameters.
-
     --learnrate, -r <alpha>
        Set learning rate for Adam algorithm to <alpha> (default 0.05).
         
-    --min-nbatches, M <N>
-        Set minimum number of mini-batches before convergence to <N>
+    --miniter, M <N>
+        Set minimum number of iterations before convergence to <N>
         (default 200).  Larger values will lead to longer convergence times
         but may find better solutions.
 
-    --nbatches-conv, -c <N>
-       Set number of mini-batches over which to average when assessing
+    --niterconv, -c <N>
+       Set number of iterations over which to average when assessing
        convergence to <N> (default 50).  Larger values will lead to
        longer convergence times but may find better solutions.
 
-    --taylor, -y
-       Optimize a Taylor approximation to the ELBO around the mean of
-       the approximate posterior, rather than estimating the ELBO by
-       Monte Carlo sampling of mini-batches.  Effectively reduces
-       batchsize to one and potentially speeds up optimization by a
-       factor of <batchsize>.
+    --montecarlo, -y
+       Estimate ELBO by Monte Carlo sampling instead of using a Taylor
+       approximation. 
+
+    --batchsize, -b <N>
+       (for use with --montecarlo) Set mini-batch size for Monte Carlo
+       estimation to <N> (default 10).  Here the minibatch size is the
+       number of phylogenetic trees sampled from the approximate
+       posterior for each update of the variational parameters.
 
 INITIALIZATION:
     --distances, -d <infile.dist>
@@ -258,8 +256,7 @@ EXPERIMENTAL/LITTLE USED:
     --natural-grad, -N
        During stochastic gradient ascent, use approximate
        natural gradient scale by multiplying each gradient by the
-       corresponding approximate inverse Fisher information. Improves
-       convergence in some cases.
+       corresponding approximate inverse Fisher information. 
 
     --upweight-kld, -U <factor>
        The variational objective function (ELBO) is the difference between

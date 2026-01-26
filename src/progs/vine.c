@@ -30,23 +30,23 @@
 #include "vine.help"
 
 #define DEFAULT_NSAMPLES 100
-#define DEFAULT_DIM 5
+#define DEFAULT_DIM 6
 #define DEFAULT_BATCHSIZE 10
 #define DEFAULT_LEARNRATE 0.05
-#define DEFAULT_NBATCHES_CONV 50
-#define DEFAULT_MIN_NBATCHES 200
+#define DEFAULT_NITER_CONV 50
+#define DEFAULT_MIN_ITER 200
 #define DEFAULT_KAPPA 4
 #define DEFAULT_RANK 3
 
 int main(int argc, char *argv[]) {
   signed char c;
   int opt_idx, i, ntips = 0, nsamples = DEFAULT_NSAMPLES, dim = DEFAULT_DIM,
-    batchsize = DEFAULT_BATCHSIZE, nbatches_conv = DEFAULT_NBATCHES_CONV,
-    min_nbatches = DEFAULT_MIN_NBATCHES, rank = DEFAULT_RANK;
+    batchsize = DEFAULT_BATCHSIZE, niter_conv = DEFAULT_NITER_CONV,
+    min_iter = DEFAULT_MIN_ITER, rank = DEFAULT_RANK;
   unsigned int nj_only = FALSE, random_start = FALSE,
     hyperbolic = FALSE, embedding_only = FALSE, rejection_sampling = FALSE,
     mvn_dump = FALSE, natural_grad = FALSE, is_crispr = FALSE, ultrametric = FALSE,
-    radial_flow = FALSE, planar_flow = FALSE, use_taylor = FALSE;
+    radial_flow = FALSE, planar_flow = FALSE, use_taylor = TRUE;
   MSA *msa = NULL;
   enum covar_type covar_param = CONST;
 
@@ -80,7 +80,7 @@ int main(int argc, char *argv[]) {
   struct option long_opts[] = {
     {"format", 1, 0, 'i'},
     {"batchsize", 1, 0, 'b'},
-    {"nbatches-conv", 1, 0, 'c'},
+    {"niterconv", 1, 0, 'c'},
     {"dimensionality", 1, 0, 'D'},
     {"distances", 1, 0, 'd'},
     {"embedding-only", 0, 0, 'e'},
@@ -90,7 +90,7 @@ int main(int argc, char *argv[]) {
     {"rejection-sampling", 0, 0, 'J'},
     {"logfile", 1, 0, 'l'},
     {"mean", 1, 0, 'm'},
-    {"min-nbatches", 1, 0, 'M'},
+    {"miniter", 1, 0, 'M'},
     {"names", 1, 0, 'n'},
     {"negcurvature", 1, 0, 'K'},
     {"nj-only", 0, 0, 'j'},
@@ -117,7 +117,7 @@ int main(int argc, char *argv[]) {
     {"relclock", 0, 0, 'L'},
     {"migration", 1, 0, 'G'},
     {"primary", 1, 0, '1'},
-    {"taylor", 0, 0, 'y'},
+    {"montecarlo", 0, 0, 'y'},
     {"help", 0, 0, 'h'},
     {0, 0, 0, 0}
   };
@@ -133,9 +133,9 @@ int main(int argc, char *argv[]) {
       nexusfile = phast_fopen(optarg, "w");
       break;
     case 'c':
-      nbatches_conv = atoi(optarg);
-      if (nbatches_conv <= 0)
-        die("ERROR: --nbatches-conv must be positive\n");
+      niter_conv = atoi(optarg);
+      if (niter_conv <= 0)
+        die("ERROR: --niterconv must be positive\n");
       break;
     case 'd':
       indistfile = phast_fopen(optarg, "r");
@@ -195,9 +195,9 @@ int main(int argc, char *argv[]) {
       postmeanfile = phast_fopen(optarg, "w");
       break;
     case 'M':
-      min_nbatches = atoi(optarg);
-      if (min_nbatches <= 0)
-        die("ERROR: --min-nbatches must be positive\n");
+      min_iter = atoi(optarg);
+      if (min_iter <= 0)
+        die("ERROR: --miniter must be positive\n");
       break;
     case 'n':
       namestr = get_arg_list(optarg);
@@ -290,7 +290,7 @@ int main(int argc, char *argv[]) {
       primary_state = optarg;
       break;
     case 'y':
-      use_taylor = TRUE;
+      use_taylor = FALSE;
       break;
     case 'h':
       printf("%s", HELP); 
@@ -332,6 +332,9 @@ int main(int argc, char *argv[]) {
   if (nexusfile != NULL && migtable == NULL)
       die("--labeled-trees requires --migration\n");
 
+  if (use_taylor && batchsize != DEFAULT_BATCHSIZE)
+    fprintf(stderr, "WARNING: --batchsize ignored when using Taylor approximation.\n");
+  
   if ((nj_only || embedding_only) &&
       (indistfile != NULL || init_tree != NULL)) {
     if (optind != argc) 
@@ -487,7 +490,7 @@ int main(int argc, char *argv[]) {
       }
 
       nj_variational_inf(mod, mmvn, batchsize, learnrate,
-                         nbatches_conv, min_nbatches, 
+                         niter_conv, min_iter, 
                          covar_data, logfile);
 
       if (rejection_sampling == TRUE) 
