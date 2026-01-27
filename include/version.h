@@ -17,6 +17,4 @@
 #define VINE_VERSION "unknown"
 #endif
 
-static const char *vine_version = VINE_VERSION;
-
 #endif
