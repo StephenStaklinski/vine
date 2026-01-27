@@ -91,6 +91,8 @@ MigTable *mig_read_table(FILE *F) {
 /* set primary state by label; returns 0 on success, -1 if label not found */
 int mig_set_primary_state(MigTable *M, const char *statelabel) {
   int idx = hsh_get_int(M->statehash, statelabel);
+  if (idx == -1)
+    return -1;
   M->primary_state = idx;
   return 0;
 }
@@ -528,10 +530,21 @@ void mig_sample_states(TreeNode *tree, MigTable *mg,
      simulate this behavior by setting the root eq freqs equal to
      the conditional distribution at the end of the branch given the
      unedited state at the start */
-  leading_Pt = lst_get_ptr(mg->Pt, tree->id); 
-  for (i = 0; i < nstates; i++)
-    root_eqfreqs[i] = mm_get(leading_Pt, 0, i);
-    
+  leading_Pt = lst_get_ptr(mg->Pt, tree->id);
+
+  if (mg->primary_state != -1) { /* force primary state at root */
+    for (i = 0; i < nstates; i++)
+      root_eqfreqs[i] = mm_get(leading_Pt, mg->primary_state, i);
+  }
+  else { /* sum over root states */
+    for (i = 0; i < nstates; i++) { /* pseudo root */
+      root_eqfreqs[i] = 0;
+      for (j = 0; j < nstates; j++) /* actual root */
+        root_eqfreqs[i] += vec_get(mg->backgd_freqs, j) *
+          mm_get(leading_Pt, j, i);
+    }
+  }
+
   for (nodeidx = 0; nodeidx < lst_size(traversal); nodeidx++) {
     n = lst_get_ptr(traversal, nodeidx);
 
@@ -540,7 +553,7 @@ void mig_sample_states(TreeNode *tree, MigTable *mg,
       cell = cprmod->mod->msa_seq_idx[n->id];
       
       if (cell == -1)
-        die("ERROR in mig_compute_log_likelihood: leaf '%s' not found in "
+        die("ERROR in mig_sample_states: leaf '%s' not found in "
             "migration table.\n", n->name);
 
       state = lst_get_int(mg->states, cell);
