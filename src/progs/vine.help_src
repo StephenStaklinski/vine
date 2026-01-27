@@ -212,11 +212,12 @@ CELL-STATE MODELING:
        string indicating its tissue or other cell state (comma
        delimited file with two columns per line).
 
-    --primary, -1 <state>       
-       Consider designated state (as defined using --migration) to be
-       "primary" and force it to be the state at the root of the tree.
-       Useful when the source state is known, as in models of cancer
-       metastasis.
+    --primary, -1 <state>
+       Consider designated state to be "primary" and force it to be
+       the state at the root of the tree.  If the specified state is
+       not present in the migration table, the state space is expanded
+       to include it.  Useful when the source state is known, as in
+       models of cancer metastasis.
 
     --sample-graphs, -O <file.dot>    
        Sample cell-state migration graphs and output to specified file

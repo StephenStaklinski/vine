@@ -423,11 +423,8 @@ int main(int argc, char *argv[]) {
                                  hyperbolic, negcurvature, ultrametric,
                                  radial_flow, planar_flow, tprior, migtable,
                                  use_taylor);
-  if (primary_state != NULL) {
-    if (mig_set_primary_state(migtable, primary_state) == -1)
-      die("ERROR: primary state label '%s' not found in migration table\n",
-          primary_state);
-  }
+  if (primary_state != NULL)
+    mig_set_primary_state(migtable, primary_state);
 
   if (embedding_only == TRUE) {
     /* in this case, embed the distances now */

@@ -213,10 +213,11 @@ CELL-STATE MODELING:\n\
        delimited file with two columns per line).\n\
 \n\
     --primary, -1 <state>       \n\
-       Consider designated state (as defined using --migration) to be\n\
-       \"primary\" and force it to be the state at the root of the tree.\n\
-       Useful when the source state is known, as in models of cancer\n\
-       metastasis.\n\
+       Consider designated state to be \"primary\" and force it to be\n\
+       the state at the root of the tree.  If the specified state is\n\
+       not present in the migration table, the state space is expanded\n\
+       to include it.  Useful when the source state is known, as in\n\
+       models of cancer metastasis.\n\
 \n\
     --sample-graphs, -O <file.dot>    \n\
        Sample cell-state migration graphs and output to specified file\n\

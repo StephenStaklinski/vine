@@ -88,16 +88,48 @@ MigTable *mig_read_table(FILE *F) {
   return M;
 }
 
-/* set primary state by label; returns 0 on success, -1 if label not found */
+/* set primary state by label.  If the label is not found in the
+   migration table, the state space is expanded to include it.
+   Returns 0 on success. */
 int mig_set_primary_state(MigTable *M, const char *statelabel) {
   int idx = hsh_get_int(M->statehash, statelabel);
-  if (idx == -1)
-    return -1;
+  if (idx == -1) {
+    /* state not in table; expand state space to include it */
+    idx = M->nstates++;
+    hsh_put_int(M->statehash, statelabel, idx);
+    lst_push_ptr(M->statenames, str_new_charstr(statelabel));
+    /* reinitialize rate matrix and parameters for expanded state space */
+    mig_update_states(M);
+  }
   M->primary_state = idx;
   return 0;
 }
 
 void mig_update_states(MigTable *M) {
+  int i;
+
+  /* free existing allocations if present (allows re-calling after state expansion) */
+  if (M->gtr_params != NULL) vec_free(M->gtr_params);
+  if (M->deriv_gtr != NULL) vec_free(M->deriv_gtr);
+  if (M->backgd_freqs != NULL) vec_free(M->backgd_freqs);
+  if (M->rate_matrix_param_row != NULL) {
+    for (i = 0; i < M->nparams; i++)
+      if (M->rate_matrix_param_row[i] != NULL) lst_free(M->rate_matrix_param_row[i]);
+    sfree(M->rate_matrix_param_row);
+  }
+  if (M->rate_matrix_param_col != NULL) {
+    for (i = 0; i < M->nparams; i++)
+      if (M->rate_matrix_param_col[i] != NULL) lst_free(M->rate_matrix_param_col[i]);
+    sfree(M->rate_matrix_param_col);
+  }
+  if (M->rate_matrix != NULL) mm_free(M->rate_matrix);
+  if (M->Pt != NULL) {
+    for (i = 0; i < lst_size(M->Pt); i++)
+      mm_free(lst_get_ptr(M->Pt, i));
+    lst_free(M->Pt);
+    M->Pt = NULL;
+  }
+
   M->nparams = (M->nstates * (M->nstates - 1)) / 2;
   M->gtr_params = vec_new(M->nparams);
   vec_set_random(M->gtr_params, 1.0, 0.1);
@@ -107,7 +139,7 @@ void mig_update_states(MigTable *M) {
   vec_set_all(M->backgd_freqs, 1.0 / M->nstates);
   M->rate_matrix_param_row = (List**)smalloc(M->nparams * sizeof(List*));
   M->rate_matrix_param_col = (List**)smalloc(M->nparams * sizeof(List*));
-  for (int i = 0; i < M->nparams; i++) {
+  for (i = 0; i < M->nparams; i++) {
     M->rate_matrix_param_row[i] = lst_new_int(2);
     M->rate_matrix_param_col[i] = lst_new_int(2);
   }
