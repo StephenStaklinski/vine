@@ -25,6 +25,7 @@
 #include <nuisance.h>
 #include <likelihoods.h>
 #include <hutchinson.h>
+#include <version.h>
 
 /* optimize variational model by stochastic gradient ascent using the
    Adam algorithm.  Takes initial tree model and alignment and
@@ -84,7 +85,6 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn,
 
   /* set up log file */
   if (logf != NULL) {
-    fprintf(logf, "# VINE logfile\n");
     fprintf(logf, "state\tll\telbo\t");
     if (data->treeprior != NULL)
       fprintf(logf, "prior\t");

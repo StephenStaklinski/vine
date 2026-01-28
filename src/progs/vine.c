@@ -11,6 +11,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <getopt.h>
+#include <time.h>
+#include <sys/utsname.h>
 #include <phast/misc.h>
 #include <phast/msa.h>
 #include <phast/maf.h>
@@ -31,7 +33,6 @@
 #include "vine.help"
 
 #define DEFAULT_NSAMPLES 100
-#define DEFAULT_DIM 6
 #define DEFAULT_BATCHSIZE 10
 #define DEFAULT_LEARNRATE 0.05
 #define DEFAULT_NITER_CONV 50
@@ -39,9 +40,33 @@
 #define DEFAULT_KAPPA 4
 #define DEFAULT_RANK 3
 
+/* default dimensionality is a linear function of log number of taxa */
+#define DEFAULT_DIM_INTERCEPT 3.25
+#define DEFAULT_DIM_SLOPE 0.92
+
+/* helper to write log file header with version and arguments */
+static inline void write_log_header(FILE *LOGF, int argc, char *argv[]) {
+  struct utsname u;
+  time_t now = time(NULL);
+  fprintf(LOGF, "# logfile for VINE (version %s), %s", VINE_VERSION, ctime(&now));
+  if (uname(&u) == 0) 
+    fprintf(LOGF, "# Host: %s [%s, release %s, %s]\n", u.nodename, u.sysname, u.release, u.machine);
+  fprintf(LOGF, "# Command line: ");
+  int nchars = 0;
+  for (int i = 0; i < argc; i++) {
+    nchars += strlen(argv[i]) + 1;
+    if (nchars > 80) {
+      fprintf(LOGF, "\\\n#   ");
+      nchars = strlen(argv[i]) + 4;
+    }
+    fprintf(LOGF, "%s ", argv[i]);
+  }
+  fprintf(LOGF, "\n#\n");
+}
+
 int main(int argc, char *argv[]) {
   signed char c;
-  int opt_idx, i, ntips = 0, nsamples = DEFAULT_NSAMPLES, dim = DEFAULT_DIM,
+  int opt_idx, i, ntips = 0, nsamples = DEFAULT_NSAMPLES, dim = -1,
     batchsize = DEFAULT_BATCHSIZE, niter_conv = DEFAULT_NITER_CONV,
     min_iter = DEFAULT_MIN_ITER, rank = DEFAULT_RANK;
   unsigned int nj_only = FALSE, random_start = FALSE,
@@ -189,6 +214,7 @@ int main(int argc, char *argv[]) {
       break;
     case 'l':
       logfile = phast_fopen(optarg, "w");
+      write_log_header(logfile, argc, argv);
       break;
     case 'L':
       relclock = TRUE;
@@ -348,7 +374,8 @@ int main(int argc, char *argv[]) {
   else { /* handle alignment file or crispr mutation table */
     if (optind != argc - 1)
       die("ERROR: alignment/mutation file required.\n");
-    
+
+    fprintf(stderr, "Reading genotype data from %s...\n", argv[optind]);
     infile = phast_fopen(argv[optind], "r");
     if (is_crispr) { /* CRISPR mutation table */
       crispr_muts = cpr_read_table(infile);
@@ -414,10 +441,21 @@ int main(int argc, char *argv[]) {
   else
     die("ERROR: no distance matrix available\n");
 
+  /* make sure we have at least three taxa */
+  if (ntips < 3)
+    die("ERROR: at least three taxa/cells are required.\n");
+  
   /* at this point, names and ntips must be defined even if we don't have an alignment */
   /* We must also have a distance matrix now; make sure valid */
-  nj_test_D(D);
-
+  nj_test_D(D);  
+  
+  /* set default dimensionality if not specified */
+  if (dim == -1) {
+    assert(DEFAULT_DIM_INTERCEPT >= 2);
+    dim = round(DEFAULT_DIM_INTERCEPT + DEFAULT_DIM_SLOPE * log((double)ntips));
+    fprintf(stderr, "Setting dimensionality to default of %d based on %d taxa...\n", dim, ntips);
+  }
+  
   covar_data = nj_new_covar_data(covar_param, D, dim, msa, crispr_mod, names,
                                  natural_grad, kld_upweight, rank, var_reg,
                                  hyperbolic, negcurvature, ultrametric,
@@ -455,18 +493,23 @@ int main(int argc, char *argv[]) {
         mod = tm_new(tree, rmat, NULL, subst_mod, DEFAULT_ALPHABET, 1, 1, NULL, -1);
         if (msa != NULL)
           tm_init_backgd(mod, msa, -1);
-        
+
         if (is_crispr) {
+          fprintf(stderr, "Using CRISPR mutation model...\n");
           crispr_mod->mod = mod;
           cpr_prep_model(crispr_mod);
         }
-        else if (subst_mod == JC69)
+        else if (subst_mod == JC69) {
+          fprintf(stderr, "Using JC69 substitition model...\n");
           tm_set_JC69_matrix(mod);
+        }
         else if (subst_mod == HKY85) {
+          fprintf(stderr, "Using HKY85 substitition model...\n");
           covar_data->hky_kappa = DEFAULT_KAPPA;
           tm_set_HKY_matrix(mod, covar_data->hky_kappa, -1);
         }
         else if (subst_mod == REV) {
+          fprintf(stderr, "Using GTR substitition model...\n");
           covar_data->gtr_params = vec_new(GTR_NPARAMS);
           covar_data->deriv_gtr = vec_new(GTR_NPARAMS);
           vec_set_random(covar_data->gtr_params, 1.0, 0.1);
@@ -491,6 +534,7 @@ int main(int argc, char *argv[]) {
         exit(0);
       }
 
+      fprintf(stderr, "Starting variational inference...\n");
       nj_variational_inf(mod, mmvn, batchsize, learnrate,
                          niter_conv, min_iter, 
                          covar_data, logfile);
@@ -501,12 +545,16 @@ int main(int argc, char *argv[]) {
       else /* otherwise just sample directly from approx posterior */
         trees = nj_var_sample(nsamples, mmvn, covar_data, names, NULL);
 
+      fprintf(stderr, "Sampling trees...\n");
       for (i = 0; i < nsamples; i++) {
         TreeNode *t = (TreeNode *)lst_get_ptr(trees, i);
         tr_print(stdout, t, TRUE);
 
         /* in these cases we need to sample cell states for each tree */
         if (graphsfile != NULL || nexusfile != NULL) {
+          if (i == 0)
+            fprintf(stderr, "Sampling cell states...\n");
+
           if (migstates_lst == NULL) migstates_lst = lst_new_ptr(nsamples);
           List *states = lst_new_ptr(t->nnodes);
           mig_sample_states(t, migtable, crispr_mod, states);
@@ -516,12 +564,17 @@ int main(int argc, char *argv[]) {
       }
 
       /* output sampled cell states if needed */
-      if (graphsfile != NULL)
+      if (graphsfile != NULL) {
+        fprintf(stderr, "Writing migration graphs...\n");
         mig_print_set_dot(trees, graphsfile, migtable, migstates_lst);
-      if (nexusfile != NULL)
+      }
+      if (nexusfile != NULL) {
+        fprintf(stderr, "Writing cell-state-labeled trees...\n");
         mig_print_set_labeled_nexus(trees, nexusfile, migtable, migstates_lst);
-      
+      }
+
       if (postmeanfile != NULL) {
+        fprintf(stderr, "Writing posterior mean tree...\n");
         Vector *mu_full = vec_new(mmvn->d * mmvn->n);
         mmvn_save_mu(mmvn, mu_full);
         tr_print(postmeanfile, nj_mean(mu_full, names, covar_data), TRUE);
@@ -559,6 +612,8 @@ int main(int argc, char *argv[]) {
     fclose(graphsfile);
   if (nexusfile != NULL)
     fclose(nexusfile);
+
+  fprintf(stderr, "Done.\n");
   
   return (0);
 }

@@ -31,11 +31,13 @@ MAIN OPTIONS:
         Display this help message and exit.
         
     --dimensionality, -D <D>
-        Set dimensionality of the space in which taxa are represented to
-        <D> (default 6).  Higher values will allow for richer
-        representations of phylogenies but typically take more time to
-        converge.  Embedding can be in either a Euclidean (the default) or
-        a hyperbolic (see --hyperbolic) space. 
+        Set dimensionality of the space in which taxa are represented
+        to <D>.  Higher values will allow for richer representations
+        of phylogenies but typically take more time to converge.
+        Embedding can be in either a Euclidean (the default) or a
+        hyperbolic (see --hyperbolic) space.  If this option is not
+        used, a default value of <D> will be estimated from the number
+        of taxa in the data set and reported to the terminal.
 
     --format, -i FASTA|SS|PHYLIP|MPM|MAF|CRISPR
         Format of alignment (default is to guess format from file
