@@ -1,4 +1,4 @@
-char HELP[13350] = "\nPROGRAM: vine [Variational Inference with Node Embedding]\n\
+char HELP[13577] = "\nPROGRAM: vine [Variational Inference with Node Embedding]\n\
 \n\
 USAGE: vine [OPTIONS] alignment.fa > trees.nwk\n\
 \n\
@@ -31,11 +31,13 @@ MAIN OPTIONS:\n\
         Display this help message and exit.\n\
         \n\
     --dimensionality, -D <D>\n\
-        Set dimensionality of the space in which taxa are represented to\n\
-        <D> (default 6).  Higher values will allow for richer\n\
-        representations of phylogenies but typically take more time to\n\
-        converge.  Embedding can be in either a Euclidean (the default) or\n\
-        a hyperbolic (see --hyperbolic) space. \n\
+        Set dimensionality of the space in which taxa are represented\n\
+        to <D>.  Higher values will allow for richer representations\n\
+        of phylogenies but typically take more time to converge.\n\
+        Embedding can be in either a Euclidean (the default) or a\n\
+        hyperbolic (see --hyperbolic) space.  If this option is not\n\
+        used, a default value of <D> will be estimated from the number\n\
+        of taxa in the data set and reported to the terminal.\n\
 \n\
     --format, -i FASTA|SS|PHYLIP|MPM|MAF|CRISPR\n\
         Format of alignment (default is to guess format from file\n\
@@ -212,7 +214,7 @@ CELL-STATE MODELING:\n\
        string indicating its tissue or other cell state (comma\n\
        delimited file with two columns per line).\n\
 \n\
-    --primary, -1 <state>       \n\
+    --primary, -1 <state>\n\
        Consider designated state to be \"primary\" and force it to be\n\
        the state at the root of the tree.  If the specified state is\n\
        not present in the migration table, the state space is expanded\n\
