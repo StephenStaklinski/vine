@@ -324,8 +324,9 @@ double mig_compute_log_likelihood(TreeModel *mod, MigTable *mg,
       rsubst_mat = lst_get_ptr(mg->Pt, n->rchild->id);
 
       rescale = FALSE;
-      for (i = 0; i < nstates; i++) {
-        double totl = 0, totr = 0;
+      for (int pass = 0; pass < 2 && (pass == 0 || rescale); pass++) {
+	for (i = 0; i < nstates; i++) {
+        double totl = 0.0, totr = 0.0;
         for (j = 0; j < nstates; j++)
           totl += pL[j][n->lchild->id] *
             mm_get(lsubst_mat, i, j);
@@ -334,21 +335,25 @@ double mig_compute_log_likelihood(TreeModel *mod, MigTable *mg,
           totr += pL[k][n->rchild->id] *
             mm_get(rsubst_mat, i, k);
 
-        pL[i][n->id] = totl * totr;
-        if (totl > 0 && totr > 0 && pL[i][n->id] < scaling_threshold)
-          rescale = TRUE;
+        if (pass == 0 && totl > 0.0 && totr > 0.0 &&
+            (totl < scaling_threshold || totr < scaling_threshold))
+          rescale = TRUE; /* will trigger second pass */
+
+        if (pass == 1)  /* second pass: do rescaling */
+          pL[i][n->id] = (totl / scaling_threshold) * (totr / scaling_threshold); 
+        else
+          pL[i][n->id] = totl * totr;
+        }
       }
 
       /* deal with nodewise scaling */
       vec_set(lscale, n->id, vec_get(lscale, n->lchild->id) +
               vec_get(lscale, n->rchild->id));
-      if (rescale == TRUE) { /* have to rescale for all states */
-        vec_set(lscale, n->id, vec_get(lscale, n->id) + lscaling_threshold);
-        for (i = 0; i < nstates; i++) 
-          pL[i][n->id] /= scaling_threshold;
-      }
+      if (rescale == TRUE) /* have to rescale for all states */
+        vec_set(lscale, n->id, vec_get(lscale, n->id) + 2 * lscaling_threshold);
     }
   }
+  
   /* termination */
   total_prob = 0;
   for (i = 0; i < nstates; i++)
@@ -374,31 +379,37 @@ double mig_compute_log_likelihood(TreeModel *mod, MigTable *mg,
         sibling = (n == n->parent->lchild ? n->parent->rchild : n->parent->lchild);
         par_subst_mat = lst_get_ptr(mg->Pt, n->id);
         sib_subst_mat = lst_get_ptr(mg->Pt, sibling->id);
-        rescale = FALSE;
-          
+
+        /* here rescaling is a bit different: we only need to
+           rescale the tiny factors from the parent and sibling
+           nodes, not all states at once */
+        int did_scale = 0;
         for (j = 0; j < nstates; j++) { /* parent state */
-          tmp[j] = 0;
-          for (k = 0; k < nstates; k++)  /* sibling state */
-            tmp[j] += pLbar[j][n->parent->id] *
-              pL[k][sibling->id] * mm_get(sib_subst_mat, j, k);
+          tmp[j] = 0.0;
+          double a = pLbar[j][n->parent->id];
+          if (a > 0.0 && a < scaling_threshold) { a /= scaling_threshold; did_scale |= 1; }
+
+          for (k = 0; k < nstates; k++) {      /* sibling state */
+            double b = pL[k][sibling->id];
+            if (b > 0.0 && b < scaling_threshold) { b /= scaling_threshold; did_scale |= 2; }
+
+            tmp[j] += a * b * mm_get(sib_subst_mat, j, k);
+          }
         }
           
         for (i = 0; i < nstates; i++) { /* child state */
-          pLbar[i][n->id] = 0;
-          for (j = 0; j < nstates; j++) { /* parent state */
+          pLbar[i][n->id] = 0.0;
+          for (j = 0; j < nstates; j++)  /* parent state */
             pLbar[i][n->id] +=
               tmp[j] * mm_get(par_subst_mat, j, i);
-            if (tmp[j] > 0 && mm_get(par_subst_mat, j, i) > 0 &&
-                pLbar[i][n->id] < scaling_threshold)
-              rescale = TRUE;
-          }
         }
-        vec_set(lscale_o, n->id, vec_get(lscale_o, n->parent->id) +
-                vec_get(lscale, sibling->id));
-        if (rescale == TRUE) { /* rescale for all states */
-          vec_set(lscale_o, n->id, vec_get(lscale_o, n->id) + lscaling_threshold);
-          for (i = 0; i < nstates; i++)
-            pLbar[i][n->id] /= scaling_threshold;     
+
+        /* bookkeeping for scaling */
+        vec_set(lscale_o, n->id,
+                vec_get(lscale_o, n->parent->id) + vec_get(lscale, sibling->id));
+        if (did_scale) {
+          int nd = ((did_scale & 1) ? 1 : 0) + ((did_scale & 2) ? 1 : 0);
+          vec_set(lscale_o, n->id, vec_get(lscale_o, n->id) + nd * lscaling_threshold);
         }
       }
     }
