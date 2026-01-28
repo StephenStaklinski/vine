@@ -50,6 +50,8 @@ MigTable *mig_new();
 
 void mig_free(MigTable *M);
 
+void mig_dump_table(MigTable *M, FILE *F);
+
 MigTable *mig_read_table(FILE *F);
 
 /* Set primary state by label. If the label is not in the migration

@@ -50,6 +50,35 @@ void mig_free(MigTable *M) {
   sfree(M);
 }
 
+/* dump migration table to file in same format as read, plus state enumeration */
+void mig_dump_table(MigTable *M, FILE *F) {
+  int i;
+
+  fprintf(F, "# Migration table dump: ncells=%d, nstates=%d, nparams=%d, primary_state=%d\n",
+          M->ncells, M->nstates, M->nparams, M->primary_state);
+
+  /* output cell-state mappings in original format */
+  for (i = 0; i < M->ncells; i++) {
+    String *cellname = lst_get_ptr(M->cellnames, i);
+    int stateidx = lst_get_int(M->states, i);
+    String *statename = lst_get_ptr(M->statenames, stateidx);
+    fprintf(F, "%s,%s\n", cellname->chars, statename->chars);
+  }
+
+  /* enumerate all states with their indices */
+  fprintf(F, "# State enumeration:\n");
+  for (i = 0; i < M->nstates; i++) {
+    String *statename = lst_get_ptr(M->statenames, i);
+    /* verify hash table consistency */
+    int hashidx = hsh_get_int(M->statehash, statename->chars);
+    fprintf(F, "#   state[%d] = \"%s\" (hash lookup returns %d)%s\n",
+            i, statename->chars, hashidx,
+            (hashidx != i) ? " *** MISMATCH ***" : "");
+  }
+  fprintf(F, "# lst_size(statenames)=%d, lst_size(states)=%d, lst_size(cellnames)=%d\n",
+          lst_size(M->statenames), lst_size(M->states), lst_size(M->cellnames));
+}
+
 /* read migration table from file; expects two comma-delimited
    columns: cell name, state name */
 MigTable *mig_read_table(FILE *F) {
@@ -94,7 +123,6 @@ MigTable *mig_read_table(FILE *F) {
 int mig_set_primary_state(MigTable *M, const char *statelabel) {
   int idx = hsh_get_int(M->statehash, statelabel);
   if (idx == -1) {
-    /* state not in table; expand state space to include it */
     idx = M->nstates++;
     hsh_put_int(M->statehash, statelabel, idx);
     lst_push_ptr(M->statenames, str_new_charstr(statelabel));
@@ -157,30 +185,31 @@ void mig_check_table(MigTable *mg, CrisprMutTable *mm) {
     die("ERROR: migration table and mutation table have different numbers of "
         "cells.\n");
 
-  /* build hashtable for mutation table cellnames */
-  Hashtable *mutnamehash = hsh_new(mg->ncells * 2);
-  for (i = 0; i < mm->ncells; i++) {
-    String *s = lst_get_ptr(mm->cellnames, i);
-    hsh_put_int(mutnamehash, s->chars, i);    
-  }
-
-  /* now check that all migration table cellnames are in mutation table */
-  List *new_cellnames = lst_new_ptr(mg->ncells);
-  List *new_states = lst_new_int(mg->ncells);
+  /* build hashtable for migration table cellnames */
+  Hashtable *mignamehash = hsh_new(mg->ncells * 2);
   for (i = 0; i < mg->ncells; i++) {
     String *s = lst_get_ptr(mg->cellnames, i);
-    int idx = hsh_get_int(mutnamehash, s->chars);
-    if (idx == -1)
-      die("ERROR: cell '%s' in migration table not found in mutation table.\n",
+    hsh_put_int(mignamehash, s->chars, i);
+  }
+
+  /* iterate over mutation table and reorder migration table to match */
+  List *new_cellnames = lst_new_ptr(mg->ncells);
+  List *new_states = lst_new_int(mg->ncells);
+  for (i = 0; i < mm->ncells; i++) {
+    String *s = lst_get_ptr(mm->cellnames, i);
+    int mig_idx = hsh_get_int(mignamehash, s->chars);
+    if (mig_idx == -1)
+      die("ERROR: cell '%s' in mutation table not found in migration table.\n",
           s->chars);
     lst_push_ptr(new_cellnames, str_dup(s));
-    lst_push_int(new_states, lst_get_int(mg->states, i));
+    lst_push_int(new_states, lst_get_int(mg->states, mig_idx));
   }
-  
-  /* replace cellnames and states with sorted versions */
+
+  /* replace cellnames and states with reordered versions */
   lst_free_strings(mg->cellnames);
   lst_free(mg->cellnames);
   lst_free(mg->states);
+  hsh_free(mignamehash);
   mg->cellnames = new_cellnames;
   mg->states = new_states;
 }
