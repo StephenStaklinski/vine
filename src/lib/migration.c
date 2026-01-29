@@ -20,6 +20,10 @@
 #include <migration.h>
 #include <multiDAG.h>
 
+/* for use in likelihood calculations to avoid
+	 underflow */
+#define REL_CUTOFF 1e-300 
+
 MigTable *mig_new() {
   MigTable *M = smalloc(sizeof(MigTable));
   M->cellnames = lst_new_ptr(200);
@@ -234,15 +238,13 @@ double mig_compute_log_likelihood(TreeModel *mod, MigTable *mg,
   double total_prob = 0;
   List *traversal, *pre_trav;
   double **pL = NULL, **pLbar = NULL;
-  double scaling_threshold = sqrt(DBL_MIN) * 1.0e10;  /* need some padding */
-  double lscaling_threshold = log(scaling_threshold), ll = 0;
+  double ll = 0;
   double tmp[nstates], root_eqfreqs[nstates];
   Matrix **grad_mat = NULL;
   List **grad_mat_P = NULL;
   MarkovMatrix *par_subst_mat, *sib_subst_mat, *leading_Pt, *lsubst_mat, *rsubst_mat; ;
   Vector *lscale, *lscale_o; /* inside and outside versions */
   Vector *this_deriv_gtr = NULL;
-  unsigned int rescale;
 
   /* set up "inside" probability matrices for pruning algorithm */
   pL = smalloc(nstates * sizeof(double*));
@@ -330,45 +332,53 @@ double mig_compute_log_likelihood(TreeModel *mod, MigTable *mg,
       lsubst_mat = lst_get_ptr(mg->Pt, n->lchild->id);
       rsubst_mat = lst_get_ptr(mg->Pt, n->rchild->id);
 
-      rescale = FALSE;
-      for (int pass = 0; pass < 2 && (pass == 0 || rescale); pass++) {
-	for (i = 0; i < nstates; i++) {
-          double totl = 0.0, totr = 0.0;
-          for (j = 0; j < nstates; j++)
-            totl += pL[j][n->lchild->id] *
-		    mm_get_floor(lsubst_mat, i, j);
-          
-          for (k = 0; k < nstates; k++)
-            totr += pL[k][n->rchild->id] *
-		    mm_get_floor(rsubst_mat, i, k);
+      /* do this in a way that handles scaling.  first compute
+         unnormalized inside values */
+      for (i = 0; i < nstates; i++) {
+	double totl = 0.0, totr = 0.0;
 
-          if (pass == 0 && totl > 0.0 && totr > 0.0 &&
-              (totl < scaling_threshold || totr < scaling_threshold))
-            rescale = TRUE; /* will trigger second pass */
+	for (j = 0; j < nstates; j++)
+	  totl += pL[j][n->lchild->id] *
+		  mm_get(lsubst_mat, i, j);
 
-          if (pass == 1)  /* second pass: do rescaling */
-            pL[i][n->id] = (totl / scaling_threshold) * (totr / scaling_threshold); 
-          else
-            pL[i][n->id] = totl * totr;
+	for (k = 0; k < nstates; k++)
+	  totr += pL[k][n->rchild->id] *
+		  mm_get(rsubst_mat, i, k);
 
-          if ((pass == 0 && !rescale) || pass == 1)
-            assert(isfinite(pL[i][n->id]) && pL[i][n->id] >= 0.0);
-        }
+	pL[i][n->id] = totl * totr;
       }
 
-      /* deal with nodewise scaling */
-      vec_set(lscale, n->id, vec_get(lscale, n->lchild->id) +
-              vec_get(lscale, n->rchild->id));
-      if (rescale == TRUE) /* have to rescale for all states */
-        vec_set(lscale, n->id, vec_get(lscale, n->id) + 2 * lscaling_threshold);
+      /* nodewise max-normalization across states */
+      double maxv = 0.0;
+      for (i = 0; i < nstates; i++)
+	if (pL[i][n->id] > maxv)
+	  maxv = pL[i][n->id];
+
+      /* propagate scaling from children */
+      vec_set(lscale, n->id,
+	      vec_get(lscale, n->lchild->id) +
+	      vec_get(lscale, n->rchild->id));
+
+      if (maxv > 0.0) {
+	/* normalize and update scale */
+	for (i = 0; i < nstates; i++)
+	  pL[i][n->id] /= maxv;
+
+	vec_set(lscale, n->id,
+		vec_get(lscale, n->id) + log(maxv));
+      }
+
+      /* zero out tiny values to save time later */
+      for (i = 0; i < nstates; i++)
+	if (pL[i][n->id] < REL_CUTOFF)
+          pL[i][n->id] = 0.0;
     }
   }
   
   /* termination */
   total_prob = 0;
   for (i = 0; i < nstates; i++)
-    total_prob += root_eqfreqs[i] *
-      pL[i][mod->tree->id] * root_eqfreqs[i];
+    total_prob += pL[i][mod->tree->id] * root_eqfreqs[i];
     
   ll += (log(total_prob) + vec_get(lscale, mod->tree->id));
 
@@ -382,45 +392,69 @@ double mig_compute_log_likelihood(TreeModel *mod, MigTable *mg,
       n = lst_get_ptr(pre_trav, nodeidx);
 
       if (n->parent == NULL) { /* base case */
-        for (i = 0; i < nstates; i++)
-          pLbar[i][n->id] = root_eqfreqs[i];
+        double maxv = 0.0;
+        for (i = 0; i < nstates; i++) {
+          pLbar[i][n->id] = vec_get(mod->backgd_freqs, i);
+          if (pLbar[i][n->id] > maxv)
+	    maxv = pLbar[i][n->id];
+	}
+
+        /* lscale_o[root] is already zero from vec_zero */
+	if (maxv > 0.0) {
+	  for (i = 0; i < nstates; i++)
+	    pLbar[i][n->id] /= maxv;
+	  vec_set(lscale_o, n->id, log(maxv));
+        }        
       }
       else {            /* recursive case */
         sibling = (n == n->parent->lchild ? n->parent->rchild : n->parent->lchild);
         par_subst_mat = lst_get_ptr(mg->Pt, n->id);
         sib_subst_mat = lst_get_ptr(mg->Pt, sibling->id);
 
-        /* here rescaling is a bit different: we only need to
-           rescale the tiny factors from the parent and sibling
-           nodes, not all states at once */
-        int did_scale = 0;
-        for (j = 0; j < nstates; j++) { /* parent state */
-          tmp[j] = 0.0;
-          double a = pLbar[j][n->parent->id];
-          if (a > 0.0 && a < scaling_threshold) { a /= scaling_threshold; did_scale |= 1; }
+	/* first form tmp[j] = sum_k pLbar(parent=j) * pL(sibling=k) * P_sib(j,k) */
+	for (j = 0; j < nstates; j++) {
+	  tmp[j] = 0.0;
+	  double a = pLbar[j][n->parent->id];
 
-          for (k = 0; k < nstates; k++) {      /* sibling state */
-            double b = pL[k][sibling->id];
-            if (b > 0.0 && b < scaling_threshold) { b /= scaling_threshold; did_scale |= 2; }
+	  if (a == 0.0) continue;
 
-            tmp[j] += a * b * mm_get_floor(sib_subst_mat, j, k);
-          }
-        }
-          
-        for (i = 0; i < nstates; i++) { /* child state */
-          pLbar[i][n->id] = 0.0;
-          for (j = 0; j < nstates; j++)  /* parent state */
-            pLbar[i][n->id] +=
-              tmp[j] * mm_get_floor(par_subst_mat, j, i);
-        }
+	  for (k = 0; k < nstates; k++) {
+	    double b = pL[k][sibling->id];
+	    if (b > 0.0)
+	      tmp[j] += a * b * mm_get(sib_subst_mat, j, k);
+	  }
+	}
+	
+	/* now propagate to child */
+	for (i = 0; i < nstates; i++) {
+	  double sum = 0.0;
+	  for (j = 0; j < nstates; j++)
+	    sum += tmp[j] * mm_get(par_subst_mat, j, i);
+	  pLbar[i][n->id] = sum;
+	}
 
-        /* bookkeeping for scaling */
-        vec_set(lscale_o, n->id,
-                vec_get(lscale_o, n->parent->id) + vec_get(lscale, sibling->id));
-        if (did_scale) {
-          int nd = ((did_scale & 1) ? 1 : 0) + ((did_scale & 2) ? 1 : 0);
-          vec_set(lscale_o, n->id, vec_get(lscale_o, n->id) + nd * lscaling_threshold);
-        }
+	/* nodewise normalization of outside vector */
+	double maxv = 0.0;
+	for (i = 0; i < nstates; i++)
+	  if (pLbar[i][n->id] > maxv)
+	    maxv = pLbar[i][n->id];
+
+	/* bookkeeping for scaling */
+	vec_set(lscale_o, n->id,
+		vec_get(lscale_o, n->parent->id) +
+		vec_get(lscale, sibling->id));
+
+	if (maxv > 0.0) {
+	  for (i = 0; i < nstates; i++)
+	    pLbar[i][n->id] /= maxv;
+
+	  vec_set(lscale_o, n->id,
+		  vec_get(lscale_o, n->id) + log(maxv));
+	}
+
+	for (i = 0; i < nstates; i++)
+	  if (pLbar[i][n->id] < REL_CUTOFF)
+	    pLbar[i][n->id] = 0.0;
       }
     }
 

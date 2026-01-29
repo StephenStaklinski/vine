@@ -24,6 +24,10 @@
 #include <likelihoods.h>
 #include <phast/sufficient_stats.h>
 
+/* for use in likelihood calculations to avoid
+	 underflow */
+#define REL_CUTOFF 1e-300 
+
 /* fully reset a tree model for use in likelihood calculations with a
    new tree */
 void nj_reset_tree_model(TreeModel *mod, TreeNode *newtree) {
@@ -55,12 +59,10 @@ double nj_compute_log_likelihood(TreeModel *mod, CovarData *data, Vector *branch
   List *traversal;
   double **pL = NULL, **pLbar = NULL;
   Vector *lscale, *lscale_o; /* inside and outside versions */
-  double scaling_threshold = sqrt(DBL_MIN) * 1.0e10;  /* need some padding */
-  double lscaling_threshold = log(scaling_threshold), ll = 0;
+  double ll = 0;
   double tmp[nstates];
   Matrix **grad_mat = NULL, **grad_mat_HKY = NULL;
   List **grad_mat_REV = NULL;
-  unsigned int rescale;
   MSA *msa = data->msa;
   Vector *this_deriv_gtr = NULL;
   static Vector *tuplecdf = NULL;
@@ -180,36 +182,46 @@ double nj_compute_log_likelihood(TreeModel *mod, CovarData *data, Vector *branch
         MarkovMatrix *lsubst_mat = mod->P[n->lchild->id][rcat];
         MarkovMatrix *rsubst_mat = mod->P[n->rchild->id][rcat];
 
-        /* set values in one or two passes, depending on whether
-           rescaling is needed */
-        rescale = FALSE;
-        for (int pass = 0; pass < 2 && (pass == 0 || rescale); pass++) {
-          for (i = 0; i < nstates; i++) {
-            double totl = 0.0, totr = 0.0;
-            for (j = 0; j < nstates; j++)
-              totl += pL[j][n->lchild->id] *
-                mm_get(lsubst_mat, i, j);
-          
-            for (k = 0; k < nstates; k++)
-              totr += pL[k][n->rchild->id] *
-                mm_get(rsubst_mat, i, k);
+	/* do this in a way that handles scaling.  first compute
+           unnormalized inside values */
+	for (i = 0; i < nstates; i++) {
+	  double totl = 0.0, totr = 0.0;
 
-            if (pass == 0 && totl > 0.0 && totr > 0.0 &&
-                (totl < scaling_threshold || totr < scaling_threshold)) 
-              rescale = TRUE; /* will trigger second pass */
-            
-            if (pass == 1)  /* second pass: do rescaling */
-              pL[i][n->id] = (totl / scaling_threshold) * (totr / scaling_threshold); 
-            else
-              pL[i][n->id] = totl * totr;
-          }
-        }
+	  for (j = 0; j < nstates; j++)
+	    totl += pL[j][n->lchild->id] *
+		    mm_get(lsubst_mat, i, j);
 
-        /* deal with nodewise scaling */
-        vec_set(lscale, n->id, vec_get(lscale, n->lchild->id) +
-                vec_get(lscale, n->rchild->id));
-        if (rescale == TRUE)  /* have to rescale for all states */
-          vec_set(lscale, n->id, vec_get(lscale, n->id) + 2 * lscaling_threshold);        
+	  for (k = 0; k < nstates; k++)
+	    totr += pL[k][n->rchild->id] *
+		    mm_get(rsubst_mat, i, k);
+
+	  pL[i][n->id] = totl * totr;
+	}
+
+	/* nodewise max-normalization across states */
+	double maxv = 0.0;
+	for (i = 0; i < nstates; i++)
+	  if (pL[i][n->id] > maxv)
+	    maxv = pL[i][n->id];
+
+	/* propagate scaling from children */
+	vec_set(lscale, n->id,
+		vec_get(lscale, n->lchild->id) +
+		vec_get(lscale, n->rchild->id));
+
+	if (maxv > 0.0) {
+	  /* normalize and update scale */
+	  for (i = 0; i < nstates; i++)
+	    pL[i][n->id] /= maxv;
+
+	  vec_set(lscale, n->id,
+		  vec_get(lscale, n->id) + log(maxv));
+	}
+
+        /* zero out tiny values to save time later */
+        for (i = 0; i < nstates; i++)
+	  if (pL[i][n->id] < REL_CUTOFF)
+	    pL[i][n->id] = 0.0;        
       }
     }
   
@@ -235,8 +247,19 @@ double nj_compute_log_likelihood(TreeModel *mod, CovarData *data, Vector *branch
         n = lst_get_ptr(traversal, nodeidx);
 
         if (n->parent == NULL) { /* base case */
-          for (i = 0; i < nstates; i++)
+          double maxv = 0.0;
+          for (i = 0; i < nstates; i++) {
             pLbar[i][n->id] = vec_get(mod->backgd_freqs, i);
+            if (pLbar[i][n->id] > maxv)
+	      maxv = pLbar[i][n->id];
+	  }
+
+          /* lscale_o[root] is already zero from vec_zero */
+	  if (maxv > 0.0) {
+	    for (i = 0; i < nstates; i++)
+	      pLbar[i][n->id] /= maxv;
+	    vec_set(lscale_o, n->id, log(maxv));
+	  }
         }
         else {            /* recursive case */
           TreeNode *sibling = (n == n->parent->lchild ?
@@ -244,37 +267,51 @@ double nj_compute_log_likelihood(TreeModel *mod, CovarData *data, Vector *branch
           MarkovMatrix *par_subst_mat = mod->P[n->id][rcat];
           MarkovMatrix *sib_subst_mat = mod->P[sibling->id][rcat];
 
-          /* here rescaling is a bit different: we only need to
-             rescale the tiny factors from the parent and sibling
-             nodes, not all states at once */
-          int did_scale = 0;
-          for (j = 0; j < nstates; j++) {        /* parent state */
-            tmp[j] = 0.0;
-            double a = pLbar[j][n->parent->id];
-            if (a > 0.0 && a < scaling_threshold) { a /= scaling_threshold; did_scale |= 1; }
+	  /* first form tmp[j] = sum_k pLbar(parent=j) * pL(sibling=k) * P_sib(j,k) */
+	  for (j = 0; j < nstates; j++) {
+	    tmp[j] = 0.0;
+	    double a = pLbar[j][n->parent->id];
 
-            for (k = 0; k < nstates; k++) {      /* sibling state */
-              double b = pL[k][sibling->id];
-              if (b > 0.0 && b < scaling_threshold) { b /= scaling_threshold; did_scale |= 2; }
+	    if (a == 0.0) continue;
 
-              tmp[j] += a * b * mm_get(sib_subst_mat, j, k);
-            }
-          }
+	    for (k = 0; k < nstates; k++) {
+	      double b = pL[k][sibling->id];
+	      if (b > 0.0)
+		tmp[j] += a * b * mm_get(sib_subst_mat, j, k);
+	    }
+	  }
 
-          for (i = 0; i < nstates; i++) {      /* child state */
-            pLbar[i][n->id] = 0.0;
-            for (j = 0; j < nstates; j++)       /* parent state */
-              pLbar[i][n->id] += tmp[j] * mm_get(par_subst_mat, j, i);
-          }
+	  /* now propagate to child */
+	  for (i = 0; i < nstates; i++) {
+	    double sum = 0.0;
+	    for (j = 0; j < nstates; j++)
+	      sum += tmp[j] * mm_get(par_subst_mat, j, i);
+	    pLbar[i][n->id] = sum;
+	  }
 
-          /* bookkeeping for scaling */
-          vec_set(lscale_o, n->id,
-                  vec_get(lscale_o, n->parent->id) + vec_get(lscale, sibling->id));
-          if (did_scale) {
-            int nd = ((did_scale & 1) ? 1 : 0) + ((did_scale & 2) ? 1 : 0);
-            vec_set(lscale_o, n->id, vec_get(lscale_o, n->id) + nd * lscaling_threshold);
-          }
-        }
+	  /* nodewise normalization of outside vector */
+	  double maxv = 0.0;
+	  for (i = 0; i < nstates; i++)
+	    if (pLbar[i][n->id] > maxv)
+	      maxv = pLbar[i][n->id];
+
+	  /* bookkeeping for scaling */
+	  vec_set(lscale_o, n->id,
+		  vec_get(lscale_o, n->parent->id) +
+		  vec_get(lscale, sibling->id));
+
+	  if (maxv > 0.0) {
+	    for (i = 0; i < nstates; i++)
+	      pLbar[i][n->id] /= maxv;
+
+	    vec_set(lscale_o, n->id,
+		    vec_get(lscale_o, n->id) + log(maxv));
+	  }
+
+	  for (i = 0; i < nstates; i++)
+	    if (pLbar[i][n->id] < REL_CUTOFF)
+	      pLbar[i][n->id] = 0.0;
+	}
       }
 
       /* TEMPORARY: check inside/outside */
