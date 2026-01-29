@@ -234,7 +234,7 @@ double mig_compute_log_likelihood(TreeModel *mod, MigTable *mg,
   double total_prob = 0;
   List *traversal, *pre_trav;
   double **pL = NULL, **pLbar = NULL;
-  double scaling_threshold = DBL_MIN * 1.0e10;  /* need some padding */
+  double scaling_threshold = sqrt(DBL_MIN) * 1.0e10;  /* need some padding */
   double lscaling_threshold = log(scaling_threshold), ll = 0;
   double tmp[nstates], root_eqfreqs[nstates];
   Matrix **grad_mat = NULL;
@@ -577,7 +577,7 @@ void mig_sample_states(TreeNode *tree, MigTable *mg,
   TreeNode *n;
   List *traversal, *pre_trav;
   double **pL = NULL;
-  double scaling_threshold = DBL_MIN * 1.0e10;  /* need some padding */
+  double scaling_threshold = sqrt(DBL_MIN) * 1.0e10;  /* need some padding */
   double lscaling_threshold = log(scaling_threshold);
   double root_eqfreqs[nstates];
   MarkovMatrix *par_subst_mat, *leading_Pt, *lsubst_mat, *rsubst_mat; ;
