@@ -333,25 +333,26 @@ double mig_compute_log_likelihood(TreeModel *mod, MigTable *mg,
       rescale = FALSE;
       for (int pass = 0; pass < 2 && (pass == 0 || rescale); pass++) {
 	for (i = 0; i < nstates; i++) {
-        double totl = 0.0, totr = 0.0;
-        for (j = 0; j < nstates; j++)
-          totl += pL[j][n->lchild->id] *
-            mm_get_floor(lsubst_mat, i, j);
+          double totl = 0.0, totr = 0.0;
+          for (j = 0; j < nstates; j++)
+            totl += pL[j][n->lchild->id] *
+		    mm_get_floor(lsubst_mat, i, j);
           
-        for (k = 0; k < nstates; k++)
-          totr += pL[k][n->rchild->id] *
-            mm_get_floor(rsubst_mat, i, k);
+          for (k = 0; k < nstates; k++)
+            totr += pL[k][n->rchild->id] *
+		    mm_get_floor(rsubst_mat, i, k);
 
-        if (pass == 0 && totl > 0.0 && totr > 0.0 &&
-            (totl < scaling_threshold || totr < scaling_threshold))
-          rescale = TRUE; /* will trigger second pass */
+          if (pass == 0 && totl > 0.0 && totr > 0.0 &&
+              (totl < scaling_threshold || totr < scaling_threshold))
+            rescale = TRUE; /* will trigger second pass */
 
-        if (pass == 1)  /* second pass: do rescaling */
-          pL[i][n->id] = (totl / scaling_threshold) * (totr / scaling_threshold); 
-        else
-          pL[i][n->id] = totl * totr;
+          if (pass == 1)  /* second pass: do rescaling */
+            pL[i][n->id] = (totl / scaling_threshold) * (totr / scaling_threshold); 
+          else
+            pL[i][n->id] = totl * totr;
 
-        assert(isfinite(pL[i][n->id]));
+          if ((pass == 0 && !rescale) || pass == 1)
+            assert(isfinite(pL[i][n->id]) && pL[i][n->id] >= 0.0);
         }
       }
 
