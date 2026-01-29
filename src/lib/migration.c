@@ -350,6 +350,8 @@ double mig_compute_log_likelihood(TreeModel *mod, MigTable *mg,
           pL[i][n->id] = (totl / scaling_threshold) * (totr / scaling_threshold); 
         else
           pL[i][n->id] = totl * totr;
+
+        assert(isfinite(pL[i][n->id]));
         }
       }
 
