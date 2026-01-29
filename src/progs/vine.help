@@ -1,4 +1,4 @@
-char HELP[13577] = "\nPROGRAM: vine [Variational Inference with Node Embedding]\n\
+char HELP[13578] = "\nPROGRAM: vine [Variational Inference with Node Embedding]\n\
 \n\
 USAGE: vine [OPTIONS] alignment.fa > trees.nwk\n\
 \n\
@@ -104,7 +104,7 @@ OPTIMIZATION:\n\
     --learnrate, -r <alpha>\n\
        Set learning rate for Adam algorithm to <alpha> (default 0.05).\n\
         \n\
-    --miniter, M <N>\n\
+    --miniter, -M <N>\n\
         Set minimum number of iterations before convergence to <N>\n\
         (default 200).  Larger values will lead to longer convergence times\n\
         but may find better solutions.\n\
