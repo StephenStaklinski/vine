@@ -61,7 +61,7 @@ MAIN OPTIONS:
         Output a single tree reflecting the mean of the approximate
         posterior distribution to the specified file.
 
-    --nsamples, -s 
+    --nsamples, -s <S>
         Number of samples to output (default 100) after convergence.
 
     --nj-only, -j

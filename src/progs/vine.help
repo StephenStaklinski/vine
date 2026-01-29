@@ -1,4 +1,4 @@
-char HELP[13578] = "\nPROGRAM: vine [Variational Inference with Node Embedding]\n\
+char HELP[13581] = "\nPROGRAM: vine [Variational Inference with Node Embedding]\n\
 \n\
 USAGE: vine [OPTIONS] alignment.fa > trees.nwk\n\
 \n\
@@ -61,7 +61,7 @@ MAIN OPTIONS:\n\
         Output a single tree reflecting the mean of the approximate\n\
         posterior distribution to the specified file.\n\
 \n\
-    --nsamples, -s \n\
+    --nsamples, -s <S>\n\
         Number of samples to output (default 100) after convergence.\n\
 \n\
     --nj-only, -j\n\
