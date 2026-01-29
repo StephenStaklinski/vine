@@ -104,7 +104,7 @@ OPTIMIZATION:
     --learnrate, -r <alpha>
        Set learning rate for Adam algorithm to <alpha> (default 0.05).
         
-    --miniter, M <N>
+    --miniter, -M <N>
         Set minimum number of iterations before convergence to <N>
         (default 200).  Larger values will lead to longer convergence times
         but may find better solutions.
