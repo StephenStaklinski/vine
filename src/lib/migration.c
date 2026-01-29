@@ -218,6 +218,7 @@ void mig_check_table(MigTable *mg, CrisprMutTable *mm) {
 #define RATE_FLOOR 1.0e-300
 static inline double mm_get_floor(MarkovMatrix *M, int i, int j) {
   double p = mm_get(M, i, j);
+  assert(p >= 0.0);
   return p + RATE_FLOOR; /* note derivative still same as orig */
 }
 
