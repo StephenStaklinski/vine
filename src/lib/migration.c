@@ -214,6 +214,13 @@ void mig_check_table(MigTable *mg, CrisprMutTable *mm) {
   mg->states = new_states;
 }
 
+/* helper function to avoid underflow if some migration rates approach zero */
+#define RATE_FLOOR 1.0e-300
+static inline double mm_get_floor(MarkovMatrix *M, int i, int j) {
+  double p = mm_get(M, i, j);
+  return p + RATE_FLOOR; /* note derivative still same as orig */
+}
+
 /* compute log likelihood of migration model based on a given tree
    model and migration table for tips.  If branchgrad is non-null, it
    will be populated with the gradient with respect to the individual
@@ -286,14 +293,14 @@ double mig_compute_log_likelihood(TreeModel *mod, MigTable *mg,
   leading_Pt = lst_get_ptr(mg->Pt, mod->tree->id);
   if (mg->primary_state != -1) { /* force primary state at root */
     for (i = 0; i < nstates; i++)
-      root_eqfreqs[i] = mm_get(leading_Pt, mg->primary_state, i);
+      root_eqfreqs[i] = mm_get_floor(leading_Pt, mg->primary_state, i);
   }
   else { /* sum over root states */   
     for (i = 0; i < nstates; i++) { /* pseudo root */
       root_eqfreqs[i] = 0;
       for (j = 0; j < nstates; j++) /* actual root */
         root_eqfreqs[i] += vec_get(mg->backgd_freqs, j) *
-          mm_get(leading_Pt, j, i);
+          mm_get_floor(leading_Pt, j, i);
     }
   }
     
@@ -329,11 +336,11 @@ double mig_compute_log_likelihood(TreeModel *mod, MigTable *mg,
         double totl = 0.0, totr = 0.0;
         for (j = 0; j < nstates; j++)
           totl += pL[j][n->lchild->id] *
-            mm_get(lsubst_mat, i, j);
+            mm_get_floor(lsubst_mat, i, j);
           
         for (k = 0; k < nstates; k++)
           totr += pL[k][n->rchild->id] *
-            mm_get(rsubst_mat, i, k);
+            mm_get_floor(rsubst_mat, i, k);
 
         if (pass == 0 && totl > 0.0 && totr > 0.0 &&
             (totl < scaling_threshold || totr < scaling_threshold))
@@ -393,7 +400,7 @@ double mig_compute_log_likelihood(TreeModel *mod, MigTable *mg,
             double b = pL[k][sibling->id];
             if (b > 0.0 && b < scaling_threshold) { b /= scaling_threshold; did_scale |= 2; }
 
-            tmp[j] += a * b * mm_get(sib_subst_mat, j, k);
+            tmp[j] += a * b * mm_get_floor(sib_subst_mat, j, k);
           }
         }
           
@@ -401,7 +408,7 @@ double mig_compute_log_likelihood(TreeModel *mod, MigTable *mg,
           pLbar[i][n->id] = 0.0;
           for (j = 0; j < nstates; j++)  /* parent state */
             pLbar[i][n->id] +=
-              tmp[j] * mm_get(par_subst_mat, j, i);
+              tmp[j] * mm_get_floor(par_subst_mat, j, i);
         }
 
         /* bookkeeping for scaling */
@@ -445,7 +452,7 @@ double mig_compute_log_likelihood(TreeModel *mod, MigTable *mg,
       for (i = 0; i < nstates; i++) {  /* parent */
         tmp[i] = 0;
         for (k = 0; k < nstates; k++)  /* sibling */
-          tmp[i] += pL[k][sibling->id] * mm_get(sib_subst_mat, i, k);
+          tmp[i] += pL[k][sibling->id] * mm_get_floor(sib_subst_mat, i, k);
       }
 
       if (n != mod->tree->rchild) { /* skip branch to right of root because unrooted */
@@ -606,14 +613,14 @@ void mig_sample_states(TreeNode *tree, MigTable *mg,
 
   if (mg->primary_state != -1) { /* force primary state at root */
     for (i = 0; i < nstates; i++)
-      root_eqfreqs[i] = mm_get(leading_Pt, mg->primary_state, i);
+      root_eqfreqs[i] = mm_get_floor(leading_Pt, mg->primary_state, i);
   }
   else { /* sum over root states */
     for (i = 0; i < nstates; i++) { /* pseudo root */
       root_eqfreqs[i] = 0;
       for (j = 0; j < nstates; j++) /* actual root */
         root_eqfreqs[i] += vec_get(mg->backgd_freqs, j) *
-          mm_get(leading_Pt, j, i);
+          mm_get_floor(leading_Pt, j, i);
     }
   }
 
@@ -646,33 +653,34 @@ void mig_sample_states(TreeNode *tree, MigTable *mg,
       lsubst_mat = lst_get_ptr(mg->Pt, n->lchild->id);
       rsubst_mat = lst_get_ptr(mg->Pt, n->rchild->id);
 
-      double maxP = 0;
-      for (i = 0; i < nstates; i++) {
-        double totl = 0, totr = 0;
+      rescale = FALSE;
+      for (int pass = 0; pass < 2 && (pass == 0 || rescale); pass++) {
+	for (i = 0; i < nstates; i++) {
+          double totl = 0.0, totr = 0.0;
         for (j = 0; j < nstates; j++)
           totl += pL[j][n->lchild->id] *
-            mm_get(lsubst_mat, i, j);
+            mm_get_floor(lsubst_mat, i, j);
           
         for (k = 0; k < nstates; k++)
           totr += pL[k][n->rchild->id] *
-            mm_get(rsubst_mat, i, k);
+            mm_get_floor(rsubst_mat, i, k);
 
-        pL[i][n->id] = totl * totr;
-        if (maxP < pL[i][n->id])
-          maxP = pL[i][n->id];
+	if (pass == 0 && totl > 0.0 && totr > 0.0 &&
+            (totl < scaling_threshold || totr < scaling_threshold))
+          rescale = TRUE; /* will trigger second pass */
+
+        if (pass == 1)  /* second pass: do rescaling */
+          pL[i][n->id] = (totl / scaling_threshold) * (totr / scaling_threshold); 
+        else
+          pL[i][n->id] = totl * totr;
+        }
       }
-      rescale = FALSE;
-      if (maxP > 0 && maxP < scaling_threshold)
-        rescale = TRUE;
 
       /* deal with nodewise scaling */
       vec_set(lscale, n->id, vec_get(lscale, n->lchild->id) +
               vec_get(lscale, n->rchild->id));
-      if (rescale == TRUE) { /* have to rescale for all states */
-        vec_set(lscale, n->id, vec_get(lscale, n->id) + lscaling_threshold);
-        for (i = 0; i < nstates; i++) 
-          pL[i][n->id] /= scaling_threshold;
-      }
+      if (rescale == TRUE)  /* have to rescale for all states */
+        vec_set(lscale, n->id, vec_get(lscale, n->id) + 2 * lscaling_threshold);
     }
   }
 
@@ -696,7 +704,7 @@ void mig_sample_states(TreeNode *tree, MigTable *mg,
       par_subst_mat = lst_get_ptr(mg->Pt, n->id);
 
       for (i = 0; i < nstates; i++)
-        sampdens[i] = pL[i][n->id] * mm_get(par_subst_mat, parstate, i);;
+        sampdens[i] = pL[i][n->id] * mm_get_floor(par_subst_mat, parstate, i);;
       state = mig_sample_state(sampdens, nstates);
 
       lst_set_int(state_samples, n->id, state);
