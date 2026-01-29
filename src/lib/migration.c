@@ -20,8 +20,7 @@
 #include <migration.h>
 #include <multiDAG.h>
 
-/* for use in likelihood calculations to avoid
-	 underflow */
+/* for use in likelihood calculations to avoid underflow */
 #define REL_CUTOFF 1e-300 
 
 MigTable *mig_new() {
