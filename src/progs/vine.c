@@ -500,16 +500,16 @@ int main(int argc, char *argv[]) {
           cpr_prep_model(crispr_mod);
         }
         else if (subst_mod == JC69) {
-          fprintf(stderr, "Using JC69 substitition model...\n");
+          fprintf(stderr, "Using JC69 substitution model...\n");
           tm_set_JC69_matrix(mod);
         }
         else if (subst_mod == HKY85) {
-          fprintf(stderr, "Using HKY85 substitition model...\n");
+          fprintf(stderr, "Using HKY85 substitution model...\n");
           covar_data->hky_kappa = DEFAULT_KAPPA;
           tm_set_HKY_matrix(mod, covar_data->hky_kappa, -1);
         }
         else if (subst_mod == REV) {
-          fprintf(stderr, "Using GTR substitition model...\n");
+          fprintf(stderr, "Using GTR substitution model...\n");
           covar_data->gtr_params = vec_new(GTR_NPARAMS);
           covar_data->deriv_gtr = vec_new(GTR_NPARAMS);
           vec_set_random(covar_data->gtr_params, 1.0, 0.1);
