@@ -21,6 +21,9 @@
 #include <phast/stringsplus.h>
 #include <crispr.h>
 
+/* for use in likelihood calculations to avoid underflow */
+#define REL_CUTOFF 1e-300 
+
 CrisprMutTable *cpr_new_table() {
   CrisprMutTable *retval = malloc(sizeof(CrisprMutTable));
   retval->sitenames = lst_new_ptr(30); /* will resize as needed */
@@ -189,14 +192,12 @@ double cpr_compute_log_likelihood(CrisprMutModel *cprmod, Vector *branchgrad) {
   double total_prob = 0;
   List *traversal, *pre_trav;
   double **pL = NULL, **pLbar = NULL;
-  double scaling_threshold = sqrt(DBL_MIN) * 1.0e10;  /* need some padding */
-  double lscaling_threshold = log(scaling_threshold), ll = 0;
+  double ll = 0;
   double tmp[cprmod->nstates+1], root_eqfreqs[cprmod->nstates+1];
   Matrix *grad_mat = NULL;
   MarkovMatrix *par_subst_mat, *sib_subst_mat;
   static CrisprAncestralStateSets *ancsets = NULL;
   Vector *lscale, *lscale_o; /* inside and outside versions */
-  unsigned int rescale;
   List *par_states, *lchild_states, *rchild_states, *child_states, *sib_states;
   int pstate, lcstate, rcstate, cstate, sstate;
       
@@ -347,65 +348,57 @@ double cpr_compute_log_likelihood(CrisprMutModel *cprmod, Vector *branchgrad) {
         lchild_states = cpr_get_state_set(ancsets, n->lchild, nstates);
         rchild_states = cpr_get_state_set(ancsets, n->rchild, nstates);
 
-
-        /* set values in one or two passes, depending on whether
-           rescaling is needed */
-        rescale = FALSE;
-        double max_totl = 0.0, max_totr = 0.0;   /* pass-0 diagnostics */
-        for (int pass = 0; pass < 2 && (pass == 0 || rescale); pass++) {
-          if (pass == 0) { max_totl = 0.0; max_totr = 0.0; }
-
-          for (i = 0; i < lst_size(par_states); i++) {
-            double totl = 0.0, totr = 0.0;
-            pstate = lst_get_int(par_states, i);
-            for (j = 0; j < lst_size(lchild_states); j++) {
-              lcstate = lst_get_int(lchild_states, j);
-              totl += pL[lcstate][n->lchild->id] *
-                      mm_get_floor(lsubst_mat, pstate, lcstate);
-            }
-            for (k = 0; k < lst_size(rchild_states); k++) {
-              rcstate = lst_get_int(rchild_states, k);
-              totr += pL[rcstate][n->rchild->id] *
-                      mm_get_floor(rsubst_mat, pstate, rcstate);
-            }
-
-            if (pass == 0) {
-              if (totl > max_totl) max_totl = totl;
-              if (totr > max_totr) max_totr = totr;
-              pL[pstate][n->id] = totl * totr;
-            }
-            else 
-              pL[pstate][n->id] = (totl / scaling_threshold) * (totr / scaling_threshold);
+        /* do this in a way that handles scaling.  first compute
+           unnormalized inside values */
+        for (i = 0; i < lst_size(par_states); i++) {
+          double totl = 0.0, totr = 0.0;
+          pstate = lst_get_int(par_states, i);
+          for (j = 0; j < lst_size(lchild_states); j++) {
+            lcstate = lst_get_int(lchild_states, j);
+            totl += pL[lcstate][n->lchild->id] *
+                    mm_get_floor(lsubst_mat, pstate, lcstate);
           }
-          if (pass == 0 && max_totl > 0.0 && max_totr > 0.0 &&
-              (max_totl < scaling_threshold || max_totr < scaling_threshold))
-            rescale = TRUE; /* will trigger second pass */
+          for (k = 0; k < lst_size(rchild_states); k++) {
+            rcstate = lst_get_int(rchild_states, k);
+            totr += pL[rcstate][n->rchild->id] *
+                    mm_get_floor(rsubst_mat, pstate, rcstate);
+          }
+          
+          pL[pstate][n->id] = totl * totr;
+	}
 
-          /* also need to check for effectively zero likelihood;
-             requires special handling by calling code */
-          if (max_totl <= lst_size(lchild_states) * CPR_PFLOOR ||
-              max_totr <= lst_size(rchild_states) * CPR_PFLOOR)
-	    cprmod->zero_likl = TRUE; 
+        /* nodewise max-normalization across states */
+	double maxv = 0.0;
+	for (i = 0; i < lst_size(par_states); i++) {
+          pstate = lst_get_int(par_states, i);
+	  if (pL[pstate][n->id] > maxv)
+            maxv = pL[pstate][n->id];
         }
 
-        /* TEMPORARY CHECK */
-        /* double checksum = 0.0; */
-        /* for (i = 0; i < lst_size(par_states); i++) { */
-        /*   pstate = lst_get_int(par_states, i); */
-        /*   checksum += pL[pstate][n->id]; */
-        /* } */
-        /* assert(isfinite(checksum) && checksum > 0.0);        */
+	/* propagate scaling from children */
+	vec_set(lscale, n->id,
+		vec_get(lscale, n->lchild->id) +
+		vec_get(lscale, n->rchild->id));
 
-        /* deal with nodewise scaling */
-        vec_set(lscale, n->id,
-                vec_get(lscale, n->lchild->id) +
-                    vec_get(lscale, n->rchild->id));
+	if (maxv > 0.0) {
+          /* normalize and update scale */
+          for (i = 0; i < lst_size(par_states); i++) {
+            pstate = lst_get_int(par_states, i);
+            pL[pstate][n->id] /= maxv;
+          }
 
-        if (rescale == TRUE)  /* have to rescale for all states */
-          vec_set(lscale, n->id,
-                  vec_get(lscale, n->id) + 2 * lscaling_threshold);
+	  vec_set(lscale, n->id,
+		  vec_get(lscale, n->id) + log(maxv));
+	}
+
+	/* zero out tiny values to save time later */
+        for (i = 0; i < lst_size(par_states); i++) {
+          pstate = lst_get_int(par_states, i);
+	  if (pL[pstate][n->id] < REL_CUTOFF)
+	    pL[pstate][n->id] = 0.0;
+        }
       }
-    }
+    } 
   
     /* termination */
     par_states = cpr_get_state_set(ancsets, cprmod->mod->tree, nstates);
@@ -434,9 +427,21 @@ double cpr_compute_log_likelihood(CrisprMutModel *cprmod, Vector *branchgrad) {
 
         if (n->parent == NULL) { /* base case */
           par_states = cpr_get_state_set(ancsets, n, nstates);
+          double maxv = 0.0;
           for (i = 0; i < lst_size(par_states); i++) {
             pstate = lst_get_int(par_states, i);
             pLbar[pstate][n->id] = root_eqfreqs[pstate];
+            if (pLbar[pstate][n->id] > maxv)
+	      maxv = pLbar[pstate][n->id];
+	  }
+
+          /* lscale_o[root] is already zero from vec_zero */
+	  if (maxv > 0.0) {
+            for (i = 0; i < lst_size(par_states); i++) {
+              pstate = lst_get_int(par_states, i);
+              pLbar[pstate][n->id] /= maxv;
+            }
+	    vec_set(lscale_o, n->id, log(maxv));
           }
         }
         else {            /* recursive case */
@@ -449,67 +454,62 @@ double cpr_compute_log_likelihood(CrisprMutModel *cprmod, Vector *branchgrad) {
           child_states = cpr_get_state_set(ancsets, n, nstates);
           sib_states = cpr_get_state_set(ancsets, sibling, nstates);
 
-          /* here rescaling is a bit different: we only need to
-             rescale the tiny factors from the parent and sibling
-             nodes, not all states at once.  Also be sure to decide
-             scaling based on dominant mass, not tiny floored
-             states */
-          double max_a = 0.0, max_b = 0.0;
+	  /* first form tmp[j] = sum_k pLbar(parent=j) * pL(sibling=k) * P_sib(j,k) */
           for (j = 0; j < lst_size(par_states); j++) {
             pstate = lst_get_int(par_states, j);
-            double a0 = pLbar[pstate][n->parent->id];
-            if (a0 > max_a) max_a = a0;
-          }
-          for (k = 0; k < lst_size(sib_states); k++) {
-            sstate = lst_get_int(sib_states, k);
-            double b0 = pL[sstate][sibling->id];
-            if (b0 > max_b) max_b = b0;
-          }
+	    tmp[pstate] = 0.0;
+	    double a = pLbar[pstate][n->parent->id];
 
-          int did_scale = 0;
-          double inv_scale_a = 1.0, inv_scale_b = 1.0;  /* multiply by these */
-          if (max_a > 0.0 && max_a < scaling_threshold) {
-            did_scale |= 1;
-            inv_scale_a = 1.0/scaling_threshold;
-          }
-          if (max_b > 0.0 && max_b < scaling_threshold) {
-            did_scale |= 2;
-            inv_scale_b = 1.0/scaling_threshold;
-          }
+	    if (a == 0.0) continue;
 
-          for (j = 0; j < lst_size(par_states); j++) {        /* parent state */
-            pstate = lst_get_int(par_states, j);
-            tmp[pstate] = 0.0;
-            double a = pLbar[pstate][n->parent->id];
-            if (did_scale & 1) a *= inv_scale_a;
-
-            for (k = 0; k < lst_size(sib_states); k++) {      /* sibling state */
+            for (k = 0; k < lst_size(sib_states); k++) {
               sstate = lst_get_int(sib_states, k);
+	      double b = pL[sstate][sibling->id];
+	      if (b > 0.0)
+		tmp[pstate] += a * b * mm_get(sib_subst_mat, pstate, sstate);
+	    }
+	  }
 
-              double b = pL[sstate][sibling->id];
-              if (did_scale & 2) b *= inv_scale_b;
-
-              tmp[pstate] += a * b * mm_get_floor(sib_subst_mat, pstate, sstate);
-            }
-          }
-
+          /* now propagate to child */
           for (i = 0; i < lst_size(child_states); i++) {      /* child state */
             cstate = lst_get_int(child_states, i);
-            pLbar[cstate][n->id] = 0.0;
+            double sum = 0.0;
             for (j = 0; j < lst_size(par_states); j++) {      /* parent state */
               pstate = lst_get_int(par_states, j);
-              pLbar[cstate][n->id] += tmp[pstate] * mm_get_floor(par_subst_mat, pstate, cstate);
+              sum += tmp[pstate] * mm_get_floor(par_subst_mat, pstate, cstate);
             }
+            pLbar[cstate][n->id] = sum;
+          }
+          
+	  /* nodewise normalization of outside vector */
+          double maxv = 0.0;
+          for (i = 0; i < lst_size(child_states); i++) {   
+            cstate = lst_get_int(child_states, i);
+	    if (pLbar[cstate][n->id] > maxv)
+              maxv = pLbar[cstate][n->id];
           }
 
-          /* bookkeeping for scaling */
-          vec_set(lscale_o, n->id,
-                  vec_get(lscale_o, n->parent->id) + vec_get(lscale, sibling->id));
-          if (did_scale) {
-            int nd = ((did_scale & 1) ? 1 : 0) + ((did_scale & 2) ? 1 : 0);
-            vec_set(lscale_o, n->id, vec_get(lscale_o, n->id) + nd * lscaling_threshold);
+	  /* bookkeeping for scaling */
+	  vec_set(lscale_o, n->id,
+		  vec_get(lscale_o, n->parent->id) +
+		  vec_get(lscale, sibling->id));
+
+          if (maxv > 0.0) {
+            for (i = 0; i < lst_size(child_states); i++) {   
+              cstate = lst_get_int(child_states, i);
+	      pLbar[cstate][n->id] /= maxv;
+            }
+            
+	    vec_set(lscale_o, n->id,
+		    vec_get(lscale_o, n->id) + log(maxv));
+	  }
+
+          for (i = 0; i < lst_size(child_states); i++) {   
+            cstate = lst_get_int(child_states, i);
+	    if (pLbar[cstate][n->id] < REL_CUTOFF)
+              pLbar[cstate][n->id] = 0.0;
           }
-        }
+	}
       }
 
       /* TEMPORARY: check inside/outside */
