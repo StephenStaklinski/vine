@@ -394,7 +394,7 @@ double mig_compute_log_likelihood(TreeModel *mod, MigTable *mg,
       if (n->parent == NULL) { /* base case */
         double maxv = 0.0;
         for (i = 0; i < nstates; i++) {
-          pLbar[i][n->id] = vec_get(mod->backgd_freqs, i);
+          pLbar[i][n->id] = root_eqfreqs[i];
           if (pLbar[i][n->id] > maxv)
 	    maxv = pLbar[i][n->id];
 	}
