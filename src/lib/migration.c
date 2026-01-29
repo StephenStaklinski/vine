@@ -218,7 +218,6 @@ void mig_check_table(MigTable *mg, CrisprMutTable *mm) {
 #define RATE_FLOOR 1.0e-300
 static inline double mm_get_floor(MarkovMatrix *M, int i, int j) {
   double p = mm_get(M, i, j);
-  assert(p >= 0.0);
   return p + RATE_FLOOR; /* note derivative still same as orig */
 }
 
@@ -545,7 +544,16 @@ void mig_update_subst_matrices(TreeNode *tree, MigTable *mg) {
   for (int nodeidx = 0; nodeidx < tree->nnodes; nodeidx++) {
     TreeNode *n = lst_get_ptr(tree->nodes, nodeidx);
     MarkovMatrix *P = lst_get_ptr(mg->Pt, nodeidx);
-    mm_exp(P, mg->rate_matrix, n->dparent);  /* CHECK: diagonalization, rate_matrix updated, etc */
+    mm_exp(P, mg->rate_matrix, n->dparent);
+
+    /* ensure no negative values due to numerical error */
+    for (int i = 0; i < mg->nstates; i++) {
+      for (int j = 0; j < mg->nstates; j++) {
+	double p = mm_get(P, i, j);
+	if (p < 0.0)
+	  mm_set(P, i, j, 0.0);
+      }
+    }
   }
 }
 
