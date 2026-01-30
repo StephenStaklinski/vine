@@ -409,7 +409,7 @@ double cpr_compute_log_likelihood(CrisprMutModel *cprmod, Vector *branchgrad) {
       int rstate = lst_get_int(par_states, i);
       total_prob += root_eqfreqs[rstate] * pL[rstate][cprmod->mod->tree->id];
     }
-    if (total_prob == 0.0) 
+    if (total_prob <= 0.0) 
       total_prob = CPR_PFLOOR;
 
     ll += (log(total_prob) + vec_get(lscale, cprmod->mod->tree->id));

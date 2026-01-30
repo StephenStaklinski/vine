@@ -366,6 +366,7 @@ double mig_compute_log_likelihood(TreeModel *mod, MigTable *mg,
 	vec_set(lscale, n->id,
 		vec_get(lscale, n->id) + log(maxv));
       }
+      else 
 
       /* zero out tiny values to save time later */
       for (i = 0; i < nstates; i++)
@@ -378,7 +379,9 @@ double mig_compute_log_likelihood(TreeModel *mod, MigTable *mg,
   total_prob = 0;
   for (i = 0; i < nstates; i++)
     total_prob += pL[i][mod->tree->id] * root_eqfreqs[i];
-    
+  if (total_prob <= 0.0)
+    total_prob = REL_CUTOFF;
+  
   ll += (log(total_prob) + vec_get(lscale, mod->tree->id));
 
   /* to compute gradients efficiently, need to make a second pass

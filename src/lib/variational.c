@@ -436,7 +436,7 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn,
     fprintf(logf, "\n");
   }
 
-  fprintf(stderr, "Converged in %d iterations: ELBO=%.2f ...\n", t, bestelb);
+  fprintf(stderr, "Converged in %d iterations; ELBO=%.2f ...\n", t, bestelb);
 
   vec_free(avegrad); vec_free(rescaledgrad); vec_free(kldgrad);
   vec_free(sparsitygrad); vec_free(m);
