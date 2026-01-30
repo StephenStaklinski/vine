@@ -132,6 +132,11 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn,
   sm->grad_norm = 0;
 
   do {
+
+    /* simple update to user */
+    if (t > 0 && t % 100 == 0)
+      fprintf(stderr, "Iteration %d; best ELBO=%.2f ...\n", t, bestelb);
+    
     /* get directives from scheduler */
     sched_next(s, st, sm, sd);
     unsigned int clipped = FALSE;
@@ -430,6 +435,8 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn,
               nj_nuis_param_get(mod, data, j));
     fprintf(logf, "\n");
   }
+
+  fprintf(stderr, "Converged in %d iterations: ELBO=%.2f ...\n", t, bestelb);
 
   vec_free(avegrad); vec_free(rescaledgrad); vec_free(kldgrad);
   vec_free(sparsitygrad); vec_free(m);

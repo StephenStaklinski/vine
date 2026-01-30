@@ -317,26 +317,28 @@ double nj_ll_core(TreeModel *mod, CovarData *data, Vector *branchgrad,
             tmp[i] += pL[k][sib->id] * mm_get(mod->P[sib->id][rcat], i, k);
         }
 
+        /* compute expon (scaling correction) for every node, including
+           rchild, so that the rate-parameter derivatives below use
+           the correct scale factor */
+        expon = -vec_get(lscale, mod->tree->id)
+          + vec_get(lscale, sib->id) + vec_get(lscale_o, par->id)
+          + vec_get(lscale, n->id) - log(base_prob);
+        /* note division by base_prob because we need deriv of log P */
+
+        /* avoid overflow */
+        if (expon > 700.0) expon = 700.0;
+        if (expon < -745.0) expon = -745.0;
+
         if (n != mod->tree->rchild) { /* skip branch to right of root because unrooted */
           /* calculate derivative analytically */
           deriv = 0;
-          for (i = 0; i < nstates; i++)   
-            for (j = 0; j < nstates; j++)    
+          for (i = 0; i < nstates; i++)
+            for (j = 0; j < nstates; j++)
               deriv +=  tmp[i] * pLbar[i][par->id] * pL[j][n->id] * mat_get(gcache->grad_mat[n->id], i, j);
 
-          /* adjust for all relevant scale terms; do everything in log space */
-          expon = -vec_get(lscale, mod->tree->id)
-            + vec_get(lscale, sib->id) + vec_get(lscale_o, par->id)
-            + vec_get(lscale, n->id) - log(base_prob);
-          /* note division by base_prob because we need deriv of log P */
-
-          /* avoid overflow */
-          if (expon > 700.0) expon = 700.0;
-          if (expon < -745.0) expon = -745.0;
-          
           deriv *= exp(expon);
           assert(isfinite(deriv));
-                  
+
           vec_set(branchgrad, n->id, vec_get(branchgrad, n->id) +
                   deriv * vec_get(tuplecounts, tupleidx));
         }
@@ -369,7 +371,7 @@ double nj_ll_core(TreeModel *mod, CovarData *data, Vector *branchgrad,
             vec_set(this_deriv_gtr, pidx, pderiv);
           }
           /* adjust for all relevant scale terms */
-          vec_scale(this_deriv_gtr, exp(expon));
+          vec_scale(this_deriv_gtr, exp(expon) * vec_get(tuplecounts, tupleidx));
           vec_plus_eq(derivs->deriv_gtr, this_deriv_gtr);
         }
       }

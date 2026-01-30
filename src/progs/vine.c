@@ -539,13 +539,18 @@ int main(int argc, char *argv[]) {
         exit(0);
       }
 
-      fprintf(stderr, "Starting variational inference...\n");
+      if (use_taylor)
+	fprintf(stderr, "Using Taylor approximation for ELBO...\n");
+      else
+	fprintf(stderr, "Using Monte Carlo estimation of ELBO...\n");
 
       if (nthreads > 1) {
         covar_data->nthreads = nthreads;
 	fprintf(stderr, "Using %d threads for likelihood calculations...\n", nthreads);
       }
-      
+
+      fprintf(stderr, "Starting variational inference...\n");
+
       nj_variational_inf(mod, mmvn, batchsize, learnrate,
                          niter_conv, min_iter, 
                          covar_data, logfile);
