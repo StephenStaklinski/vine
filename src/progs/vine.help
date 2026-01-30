@@ -1,4 +1,4 @@
-char HELP[13581] = "\nPROGRAM: vine [Variational Inference with Node Embedding]\n\
+char HELP[13760] = "\nPROGRAM: vine [Variational Inference with Node Embedding]\n\
 \n\
 USAGE: vine [OPTIONS] alignment.fa > trees.nwk\n\
 \n\
@@ -57,6 +57,10 @@ MAIN OPTIONS:\n\
     --logfile, -l <logfile.txt>\n\
         Output detailed log for variational inference to specified file\n\
 \n\
+    --parallel, -j <nthreads>\n\
+    	Enable <nthreads> parallel threads to accelerate likelihood\n\
+    	calculations.  Default is 1 (no multithreading). Requires OpenMP.\n\
+\n\
     --mean, -m <meantree.nh>\n\
         Output a single tree reflecting the mean of the approximate\n\
         posterior distribution to the specified file.\n\
@@ -64,7 +68,7 @@ MAIN OPTIONS:\n\
     --nsamples, -s <S>\n\
         Number of samples to output (default 100) after convergence.\n\
 \n\
-    --nj-only, -j\n\
+    --nj-only, -0\n\
         Simply estimate and output a single tree using the neighbor-joining\n\
         algorithm; do not follow with variational inference. If\n\
         --ultrametric is selected will use UPGMA instead of NJ.\n\

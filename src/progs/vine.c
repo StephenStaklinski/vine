@@ -67,12 +67,12 @@ static inline void write_log_header(FILE *LOGF, int argc, char *argv[]) {
 int main(int argc, char *argv[]) {
   signed char c;
   int opt_idx, i, ntips = 0, nsamples = DEFAULT_NSAMPLES, dim = -1,
-    batchsize = DEFAULT_BATCHSIZE, niter_conv = DEFAULT_NITER_CONV,
-    min_iter = DEFAULT_MIN_ITER, rank = DEFAULT_RANK;
-  unsigned int nj_only = FALSE, random_start = FALSE,
-    hyperbolic = FALSE, embedding_only = FALSE, rejection_sampling = FALSE,
-    mvn_dump = FALSE, natural_grad = FALSE, is_crispr = FALSE, ultrametric = FALSE,
-    radial_flow = FALSE, planar_flow = FALSE, use_taylor = TRUE;
+  batchsize = DEFAULT_BATCHSIZE, niter_conv = DEFAULT_NITER_CONV,
+  min_iter = DEFAULT_MIN_ITER, rank = DEFAULT_RANK, nthreads = 1;
+  unsigned int nj_only = FALSE, random_start = FALSE, hyperbolic = FALSE,
+  embedding_only = FALSE, rejection_sampling = FALSE,
+  mvn_dump = FALSE, natural_grad = FALSE, is_crispr = FALSE,
+  ultrametric = FALSE, radial_flow = FALSE, planar_flow = FALSE, use_taylor = TRUE; 
   MSA *msa = NULL;
   enum covar_type covar_param = CONST;
 
@@ -119,7 +119,7 @@ int main(int argc, char *argv[]) {
     {"miniter", 1, 0, 'M'},
     {"names", 1, 0, 'n'},
     {"negcurvature", 1, 0, 'K'},
-    {"nj-only", 0, 0, 'j'},
+    {"nj-only", 0, 0, '0'},
     {"natural-grad", 0, 0, 'N'},
     {"out-dists", 1, 0, 'o'},
     {"sample-graphs", 1, 0, 'O'},
@@ -149,7 +149,7 @@ int main(int argc, char *argv[]) {
     {0, 0, 0, 0}
   };
 
-  while ((c = getopt_long(argc, argv, "b:B:c:d:D:egG:hHi:FZjJkK:l:L:m:M:n:No:v:r:Rt:T:VW:S:s:CY:yPp:x", long_opts, &opt_idx)) != -1) {
+  while ((c = getopt_long(argc, argv, "0:1:b:B:c:d:D:egG:hHi:FZj:JkK:l:L:m:M:n:No:v:r:Rt:T:VW:S:s:CY:yPp:x", long_opts, &opt_idx)) != -1) {
     switch (c) {
     case 'b':
       batchsize = atoi(optarg);
@@ -187,6 +187,11 @@ int main(int argc, char *argv[]) {
       else
         format = msa_str_to_format(optarg);
       break;
+    case 'j':
+      nthreads = atoi(optarg);
+      if (nthreads <= 0)
+	die("ERROR: --nthreads must be positive\n");
+      break;
     case 'g':
       subst_mod = REV;
       break;
@@ -196,7 +201,7 @@ int main(int argc, char *argv[]) {
     case 'J':
       rejection_sampling = TRUE;
       break;
-    case 'j':
+    case '0':
       nj_only = TRUE;
       break;
     case 'k':
@@ -535,6 +540,12 @@ int main(int argc, char *argv[]) {
       }
 
       fprintf(stderr, "Starting variational inference...\n");
+
+      if (nthreads > 1) {
+        covar_data->nthreads = nthreads;
+	fprintf(stderr, "Using %d threads for likelihood calculations...\n", nthreads);
+      }
+      
       nj_variational_inf(mod, mmvn, batchsize, learnrate,
                          niter_conv, min_iter, 
                          covar_data, logfile);

@@ -94,7 +94,8 @@ typedef struct cvdat {
                            ids, used with leaf1 and leaf2 */
   struct taylor_data *taylor; /* auxiliary data for Taylor approximation to
                                  ELBO (or NULL) */
-  int variational_iter; /* current iteration of variational inference */
+  int variational_iter;       /* current iteration of variational inference */
+  int nthreads; 
 } CovarData;
 
 void nj_update_covariance(multi_MVN *mmvn, CovarData *data);

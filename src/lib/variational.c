@@ -205,8 +205,9 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn,
     /* now estimate ELBO and gradient, either by Monte Carlo integration or by
      * the Taylor approximation */
 
-     /* first set up subsampling based on scheduler parameters (but not in crispr mode) */
-    if (!sd->full_grad_now && data->crispr_mod == NULL) {
+    /* first set up subsampling based on scheduler parameters (but not
+       in crispr mode or with multithreading) */
+    if (!sd->full_grad_now && data->crispr_mod == NULL && data->nthreads == 1) {
       data->subsample = TRUE;
       data->subsampsize = sd->m;
       data->reuse_subsamp = !sd->resample_sites;

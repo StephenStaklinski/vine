@@ -30,6 +30,8 @@ add_library(vine_core STATIC
     variational.c
 )
 
+find_package(OpenMP)
+
 set_target_properties(vine_core PROPERTIES
     OUTPUT_NAME vine
 )
@@ -47,6 +49,11 @@ target_link_libraries(vine_core
     PUBLIC
         phast::phast_core
 )
+
+if(OpenMP_C_FOUND)
+  target_link_libraries(vine_core PUBLIC OpenMP::OpenMP_C)
+  target_compile_definitions(vine_core PUBLIC VINE_HAS_OPENMP)
+endif()
 
 # Install the library
 install(TARGETS vine_core

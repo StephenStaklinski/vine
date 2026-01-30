@@ -57,6 +57,10 @@ MAIN OPTIONS:
     --logfile, -l <logfile.txt>
         Output detailed log for variational inference to specified file
 
+    --parallel, -j <nthreads>
+    	Enable <nthreads> parallel threads to accelerate likelihood
+    	calculations.  Default is 1 (no multithreading). Requires OpenMP.
+
     --mean, -m <meantree.nh>
         Output a single tree reflecting the mean of the approximate
         posterior distribution to the specified file.
@@ -64,7 +68,7 @@ MAIN OPTIONS:
     --nsamples, -s <S>
         Number of samples to output (default 100) after convergence.
 
-    --nj-only, -j
+    --nj-only, -0
         Simply estimate and output a single tree using the neighbor-joining
         algorithm; do not follow with variational inference. If
         --ultrametric is selected will use UPGMA instead of NJ.

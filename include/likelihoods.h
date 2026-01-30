@@ -30,14 +30,34 @@
 /* number of free parameters in GTR model */
 #define GTR_NPARAMS 6
 
+/* Per-thread derivative accumulators (thread-local) */
+typedef struct {
+  double deriv_hky_kappa;
+  Vector *deriv_gtr;   /* NULL unless REV */
+} NJDerivs;
+
+/* read-only cache of gradient matrices (shared across threads) */
+typedef struct {
+  Matrix **grad_mat;          /* [nnodes] */
+  Matrix **grad_mat_HKY;      /* [nnodes] or NULL */
+  List **grad_mat_REV;        /* [nnodes] or NULL */
+  Vector *tuplecounts;        /* counts of each unique tuple */
+} NJGradCache;
+
 void nj_reset_tree_model(TreeModel *mod, TreeNode *newtree);
 
-double nj_compute_log_likelihood(TreeModel *mod, CovarData *data, Vector *branchgrad);
+double nj_ll_core(TreeModel *mod, CovarData *data, Vector *branchgrad,
+                  NJDerivs *derivs, NJGradCache *gcache, List *range);
 
 int *nj_build_seq_idx(List *leaves, char **names);
 
 int nj_get_seq_idx(char **names, char *name, int n);
 
 void nj_init_gtr_mapping(TreeModel *tm);
+
+double nj_compute_log_likelihood(TreeModel *mod, CovarData *data, Vector *branchgrad);
+
+double nj_ll_parallel(TreeModel *mod, CovarData *data, Vector *branchgrad,
+                      int nthreads_requested, NJGradCache *gcache);
 
 #endif

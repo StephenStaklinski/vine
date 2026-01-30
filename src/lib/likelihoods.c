@@ -24,9 +24,19 @@
 #include <likelihoods.h>
 #include <phast/sufficient_stats.h>
 
+/* for multithreading */
+#ifdef _OPENMP
+  #include <omp.h>
+  #define NJ_OMP_GET_MAX_THREADS() omp_get_max_threads()
+  #define NJ_OMP_GET_THREAD_NUM() omp_get_thread_num()
+#else
+  #define NJ_OMP_GET_MAX_THREADS() 1
+  #define NJ_OMP_GET_THREAD_NUM()  0
+#endif
+
 /* for use in likelihood calculations to avoid
 	 underflow */
-#define REL_CUTOFF 1e-300 
+#define REL_CUTOFF 1e-300
 
 /* fully reset a tree model for use in likelihood calculations with a
    new tree */
@@ -49,8 +59,13 @@ void nj_reset_tree_model(TreeModel *mod, TreeNode *newtree) {
    It also makes use of scaling factors to avoid underflow with large
    trees.  If branchgrad is non-null, it will be populated with the
    gradient of the log likelihood with respect to the individual
-   branches of the tree, in post-order.  */
-double nj_compute_log_likelihood(TreeModel *mod, CovarData *data, Vector *branchgrad) {
+   branches of the tree, in post-order.  This "core" routine is now
+   threadsafe and is called by wrapper functions that handle setup and
+   multithreading (see below).  The 'range' parameter can be used to
+   specify a subset of tuple indices in a multithreading setting (set
+   NULL to ignore). */
+double nj_ll_core(TreeModel *mod, CovarData *data, Vector *branchgrad,
+                  NJDerivs *derivs, NJGradCache *gcache, List *range) {
 
   int i, j, k, nodeidx, rcat = 0, tupleidx;
   int nstates = mod->rate_matrix->size;
@@ -61,26 +76,9 @@ double nj_compute_log_likelihood(TreeModel *mod, CovarData *data, Vector *branch
   Vector *lscale, *lscale_o; /* inside and outside versions */
   double ll = 0;
   double tmp[nstates];
-  Matrix **grad_mat = NULL, **grad_mat_HKY = NULL;
-  List **grad_mat_REV = NULL;
   MSA *msa = data->msa;
   Vector *this_deriv_gtr = NULL;
-  static Vector *tuplecdf = NULL;
-  static Vector *tuplecounts = NULL;
-  unsigned int first_time = TRUE; /* first-time through loop over
-                                     sites; trigger for certain
-                                     initializations */
-  
-  if (msa->ss->tuple_size != 1)
-    die("ERROR nj_compute_log_likelihood: need tuple size 1, got %i\n",
-	msa->ss->tuple_size);
-  if (mod->order != 0)
-    die("ERROR nj_compute_log_likelihood: got mod->order of %i, expected 0\n",
-	mod->order);
-  if (!mod->allow_gaps)
-    die("ERROR nj_compute_log_likelihood: need mod->allow_gaps to be TRUE\n");
-  if (mod->nratecats > 1)
-    die("ERROR nj_compute_log_likelihood: no rate variation allowed\n");
+  Vector *tuplecounts = gcache->tuplecounts;
   
   pL = smalloc(nstates * sizeof(double*));
   for (j = 0; j < nstates; j++)
@@ -93,63 +91,31 @@ double nj_compute_log_likelihood(TreeModel *mod, CovarData *data, Vector *branch
   
   if (branchgrad != NULL) {
     if (branchgrad->size != mod->tree->nnodes-1) /* rooted */
-      die("ERROR in nj_compute_log_likelihood: size of branchgrad must be 2n-2\n");
+      die("ERROR in nj_compute_log_likelihood: size of branchgrad must be "
+          "2n-2\n");
     vec_zero(branchgrad);
     pLbar = smalloc(nstates * sizeof(double*));
     for (j = 0; j < nstates; j++)
       pLbar[j] = smalloc((mod->tree->nnodes+1) * sizeof(double));
     if (mod->subst_mod == HKY85)
-      data->deriv_hky_kappa = 0.0;
-    else if (mod->subst_mod == REV)
-      vec_zero(data->deriv_gtr);
-    grad_mat = malloc(mod->tree->nnodes * sizeof(void*));
-    for (j = 0; j < mod->tree->nnodes; j++)
-      grad_mat[j] = mat_new(nstates, nstates);
-    if (mod->subst_mod == HKY85) {
-      grad_mat_HKY = malloc(mod->tree->nnodes * sizeof(void*));
-      for (j = 0; j < mod->tree->nnodes; j++)
-        grad_mat_HKY[j] = mat_new(nstates, nstates);
-    }
+      derivs->deriv_hky_kappa = 0.0;
     else if (mod->subst_mod == REV) {
-      /* in this case, each node of the tree needs a list of gradient
-         matrices, one for each free GTR parameter */
-      grad_mat_REV = malloc(mod->tree->nnodes * sizeof(void*));
-      for (j = 0; j < mod->tree->nnodes; j++) {
-        grad_mat_REV[j] = lst_new_ptr(data->gtr_params->size);
-        for (int jj = 0; jj < data->gtr_params->size; jj++)
-          lst_push_ptr(grad_mat_REV[j],
-                       mat_new(nstates, nstates));
-      }
       this_deriv_gtr = vec_new(data->gtr_params->size);
+      vec_zero(derivs->deriv_gtr);
     }
   }
 
-  tm_set_subst_matrices(mod);  /* just call this in all cases; we'll be tweaking the model a lot */
+  /* set up active range of tuples for this thread */
+  int t0 = 0, t1 = msa->ss->ntuples;
+  if (range != NULL) {
+    if (lst_size(range) != 2) die("nj_ll_core: range must have size 2");
+    t0 = lst_get_int(range, 0);
+    t1 = lst_get_int(range, 1);
+    if (t0 < 0) t0 = 0;
+    if (t1 > msa->ss->ntuples) t1 = msa->ss->ntuples;
+  }
   
-  /* get sequence index if not already there */
-  if (mod->msa_seq_idx == NULL)
-    tm_build_seq_idx(mod, msa);
-
-  /* set up tuple counts, subsampling if necessary */
-  if (data->subsample == TRUE) {
-    if (tuplecdf == NULL) { /* build CDF for sampling */
-      Vector *counts = vec_view_array(msa->ss->counts, msa->ss->ntuples);
-      tuplecdf = pv_cdf_from_counts(counts, LOWER);
-      sfree(counts); /* avoid vec_free */
-    }
-    else /* CDF already exists; check that it makes sense */
-      assert(tuplecdf->size == msa->ss->ntuples);
-    if (tuplecounts == NULL || data->reuse_subsamp == FALSE ||
-        vec_sum(tuplecounts) != data->subsampsize) { /* need new subsample */
-      if (tuplecounts == NULL) tuplecounts = vec_new(msa->ss->ntuples);
-      else assert(tuplecounts->size == msa->ss->ntuples);
-      pv_draw_counts(tuplecounts, tuplecdf, data->subsampsize);
-    }
-  }
-  else /* not subsampling; just provide a 'view' of the full counts array */
-    tuplecounts = vec_view_array(msa->ss->counts, msa->ss->ntuples);
-      
-  for (tupleidx = 0; tupleidx < msa->ss->ntuples; tupleidx++) {
+  for (tupleidx = t0; tupleidx < t1; tupleidx++) {
     if (vec_get(tuplecounts, tupleidx) == 0) continue; /* important when subsampling */
 
     /* reset scale */
@@ -229,7 +195,10 @@ double nj_compute_log_likelihood(TreeModel *mod, CovarData *data, Vector *branch
     total_prob = 0;
     for (i = 0; i < nstates; i++)
       total_prob += vec_get(mod->backgd_freqs, i) *
-        pL[i][mod->tree->id] * mod->freqK[rcat];      
+        pL[i][mod->tree->id] * mod->freqK[rcat];
+
+    if (total_prob == 0.0)
+      total_prob = REL_CUTOFF;  /* avoid log(0) */
     
     ll += (log(total_prob) + vec_get(lscale, mod->tree->id)) * vec_get(tuplecounts, tupleidx);
 
@@ -351,21 +320,9 @@ double nj_compute_log_likelihood(TreeModel *mod, CovarData *data, Vector *branch
         if (n != mod->tree->rchild) { /* skip branch to right of root because unrooted */
           /* calculate derivative analytically */
           deriv = 0;
-          /* only do this first time through */
-          if (first_time == TRUE) {
-            if (mod->subst_mod == JC69)
-              tm_grad_JC69(mod, grad_mat[n->id], n->dparent);
-            else if (mod->subst_mod == HKY85)
-              tm_grad_HKY_dt(mod, grad_mat[n->id], data->hky_kappa, n->dparent);
-            else if (mod->subst_mod == REV) 
-              tm_grad_REV_dt(mod, grad_mat[n->id], n->dparent); 
-            else
-              die("ERROR in nj_compute_log_likelihood: only JC69, HKY85 and REV substitution models are supported.\n");
-          }
-          
           for (i = 0; i < nstates; i++)   
             for (j = 0; j < nstates; j++)    
-              deriv +=  tmp[i] * pLbar[i][par->id] * pL[j][n->id] * mat_get(grad_mat[n->id], i, j);
+              deriv +=  tmp[i] * pLbar[i][par->id] * pL[j][n->id] * mat_get(gcache->grad_mat[n->id], i, j);
 
           /* adjust for all relevant scale terms; do everything in log space */
           expon = -vec_get(lscale, mod->tree->id)
@@ -388,26 +345,21 @@ double nj_compute_log_likelihood(TreeModel *mod, CovarData *data, Vector *branch
            they have to be aggregated across all branches */
         if (mod->subst_mod == HKY85) {
           double this_deriv_kappa = 0;
-          if (first_time == TRUE)  /* first time only */
-            tm_grad_HKY_dkappa(mod, grad_mat_HKY[n->id], data->hky_kappa,
-                               n->dparent);
           for (i = 0; i < nstates; i++) 
             for (j = 0; j < nstates; j++) 
               this_deriv_kappa += tmp[i] * pLbar[i][par->id] * pL[j][n->id] *
-                mat_get(grad_mat_HKY[n->id], i, j);
+                mat_get(gcache->grad_mat_HKY[n->id], i, j);
 
           /* adjust for all relevant scale terms */
           this_deriv_kappa *= exp(expon);
-          data->deriv_hky_kappa +=
+          derivs->deriv_hky_kappa +=
             (this_deriv_kappa * vec_get(tuplecounts, tupleidx));
         }
         else if (mod->subst_mod == REV) {
-          if (first_time == TRUE)  /* first time only */
-            tm_grad_REV_dr(mod, grad_mat_REV[n->id], n->dparent);
           /* loop over rate parameters */
           for (int pidx = 0; pidx < data->gtr_params->size; pidx++) {
             double pderiv = 0; /* partial deriv wrt this param */
-            Matrix *dP_dr = lst_get_ptr(grad_mat_REV[n->id], pidx);
+            Matrix *dP_dr = lst_get_ptr(gcache->grad_mat_REV[n->id], pidx);
             for (int i = 0; i < nstates; i++) {
               for (int j = 0; j < nstates; j++) {
                 pderiv += tmp[i] * pLbar[i][par->id] * pL[j][n->id] *
@@ -418,11 +370,10 @@ double nj_compute_log_likelihood(TreeModel *mod, CovarData *data, Vector *branch
           }
           /* adjust for all relevant scale terms */
           vec_scale(this_deriv_gtr, exp(expon));
-          vec_plus_eq(data->deriv_gtr, this_deriv_gtr);
+          vec_plus_eq(derivs->deriv_gtr, this_deriv_gtr);
         }
       }
     }
-    first_time = FALSE; /* after first processed tuple (some are skipped) */
   }
   
   for (j = 0; j < nstates; j++)
@@ -433,36 +384,12 @@ double nj_compute_log_likelihood(TreeModel *mod, CovarData *data, Vector *branch
     for (j = 0; j < nstates; j++)
       sfree(pLbar[j]);
     sfree(pLbar);
-    for (j = 0; j < mod->tree->nnodes; j++)      
-      mat_free(grad_mat[j]);
-    free(grad_mat);
-    if (mod->subst_mod == HKY85) {
-      for (j = 0; j < mod->tree->nnodes; j++)      
-        mat_free(grad_mat_HKY[j]);
-      free(grad_mat_HKY);
-    }
-    else if (mod->subst_mod == REV) {
-      for (j = 0; j < mod->tree->nnodes; j++) {
-        List *gmats = grad_mat_REV[j];
-        for (int jj = 0; jj < lst_size(gmats); jj++)
-          mat_free(lst_get_ptr(gmats, jj));
-        lst_free(gmats);
-      }
-      free(grad_mat_REV);
+    if (mod->subst_mod == REV)
       vec_free(this_deriv_gtr);
-    }
   }
 
   vec_free(lscale);
   vec_free(lscale_o);
-
-  if (data->subsample == FALSE) {
-    sfree(tuplecounts); /* in this case, it's just a wrapper for the
-                           underlying array of counts; avoid vec_free;
-                           don't do anything if subsampling because
-                           have to store for possible reuse */
-    tuplecounts = NULL;
-  }
   
   return ll;
 }
@@ -502,4 +429,233 @@ void nj_init_gtr_mapping(TreeModel *tm) {
     tm->rate_matrix_param_row[i] = lst_new_int(2);
     tm->rate_matrix_param_col[i] = lst_new_int(2);
   }
+}
+
+/* --- code for multithreading of likelihood calculations --- */
+
+/* The main likelihood function (same interface as previously) is now a wrapper
+   that handles setup, subsampling, and multithreading.  The actual likelihood
+   calculation is done in nj_ll_core, which is called by
+   each thread separately. */
+double nj_compute_log_likelihood(TreeModel *mod, CovarData *data,
+                                 Vector *branchgrad) {
+  double ll;
+
+  /* ---- basic sanity checks  ---- */
+ if (data->msa->ss->tuple_size != 1)
+    die("ERROR nj_compute_log_likelihood: need tuple size 1, got %i\n",
+	data->msa->ss->tuple_size);
+  if (mod->order != 0)
+    die("ERROR nj_compute_log_likelihood: got mod->order of %i, expected 0\n",
+	mod->order);
+  if (!mod->allow_gaps)
+    die("ERROR nj_compute_log_likelihood: need mod->allow_gaps to be TRUE\n");
+  if (mod->nratecats > 1)
+    die("ERROR nj_compute_log_likelihood: no rate variation allowed\n");
+    
+  /* ---- one-time model setup (not thread-safe if repeated) ---- */
+  tm_set_subst_matrices(mod);
+
+  if (mod->msa_seq_idx == NULL)
+    tm_build_seq_idx(mod, data->msa);
+
+  tr_postorder(mod->tree); /* ensure these are cached */
+  tr_preorder(mod->tree);
+  
+  /* ---- policy enforcement ---- */
+  if (data->nthreads > 1 && data->subsample)
+    die("ERROR: subsampling is not allowed with multithreading.\n");
+
+  /* set up tuplecounts; subsample if needed */
+  static Vector *tuplecdf = NULL;
+  static Vector *tuplecounts = NULL;
+  if (data->subsample == TRUE) {
+    if (tuplecdf == NULL) { /* build CDF for sampling */
+      Vector *counts = vec_view_array(data->msa->ss->counts, data->msa->ss->ntuples);
+      tuplecdf = pv_cdf_from_counts(counts, LOWER);
+      sfree(counts); /* avoid vec_free */
+    }
+    else  /* CDF already exists; check that it makes sense */
+      assert(tuplecdf->size == data->msa->ss->ntuples);
+    if (tuplecounts == NULL || data->reuse_subsamp == FALSE ||
+	vec_sum(tuplecounts) != data->subsampsize) { /* need new subsample */
+      if (tuplecounts == NULL) tuplecounts = vec_new(data->msa->ss->ntuples);
+      else assert(tuplecounts->size == data->msa->ss->ntuples);
+      pv_draw_counts(tuplecounts, tuplecdf, data->subsampsize);
+    }
+  }
+  else 
+    /* not subsampling; just provide a 'view' of the full counts array */
+    tuplecounts = vec_view_array(data->msa->ss->counts, data->msa->ss->ntuples);
+
+  /* ---- set up gradient cache ---- */
+  int nnodes = mod->tree->nnodes;
+  int nstates = mod->rate_matrix->size;
+  NJGradCache gcache = {0};
+  gcache.tuplecounts = tuplecounts;
+  if (branchgrad != NULL) {
+    int j, p;
+    gcache.grad_mat = malloc(nnodes * sizeof(Matrix *));
+    for (j = 0; j < nnodes; j++)
+      gcache.grad_mat[j] = mat_new(nstates, nstates);
+
+    if (mod->subst_mod == HKY85) {
+      gcache.grad_mat_HKY = malloc(nnodes * sizeof(Matrix *));
+      for (j = 0; j < nnodes; j++)
+	gcache.grad_mat_HKY[j] = mat_new(nstates, nstates);
+    }
+    else if (mod->subst_mod == REV) {
+      gcache.grad_mat_REV = malloc(nnodes * sizeof(List *));
+      for (j = 0; j < nnodes; j++) {
+	gcache.grad_mat_REV[j] = lst_new_ptr(data->gtr_params->size);
+	for (p = 0; p < data->gtr_params->size; p++)
+          lst_push_ptr(gcache.grad_mat_REV[j], mat_new(nstates, nstates));
+      }
+    }
+    /* compute gradient matrices ONCE */
+    for (j = 0; j < nnodes; j++) {
+      TreeNode *n = lst_get_ptr(mod->tree->nodes, j);
+
+      if (mod->subst_mod == JC69)
+        tm_grad_JC69(mod, gcache.grad_mat[j], n->dparent);
+      else if (mod->subst_mod == HKY85) {
+        tm_grad_HKY_dt(mod, gcache.grad_mat[j], data->hky_kappa, n->dparent);
+        tm_grad_HKY_dkappa(mod, gcache.grad_mat_HKY[j], data->hky_kappa,
+                           n->dparent);
+      } else if (mod->subst_mod == REV) {
+        tm_grad_REV_dt(mod, gcache.grad_mat[j], n->dparent);
+        tm_grad_REV_dr(mod, gcache.grad_mat_REV[j], n->dparent);
+      }
+    }
+  }
+
+  /* if multiple threads are requested but OpenMP is not active, catch it here */
+#ifndef _OPENMP
+  if (data->nthreads > 1) 
+    die("ERROR: Multithreading requested but OpenMP is not enabled.\n");
+#endif
+  
+  /* ---- sequential path ---- */
+  if (data->nthreads == 1) 
+    /* legacy behavior, but wrapper-controlled */
+    ll = nj_ll_parallel(mod, data, branchgrad, 1, &gcache);
+
+  /* ---- parallel path ---- */
+  else
+    ll = nj_ll_parallel(mod, data, branchgrad, data->nthreads, &gcache);
+
+  if (data->subsample == FALSE) {
+    sfree(tuplecounts);  /* view wrapper */
+    tuplecounts = NULL;
+  }
+    
+  if (branchgrad != NULL) {
+    for (int j = 0; j < nnodes; j++)
+      mat_free(gcache.grad_mat[j]);
+    free(gcache.grad_mat);
+
+    if (gcache.grad_mat_HKY) {
+      for (int j = 0; j < nnodes; j++)
+        mat_free(gcache.grad_mat_HKY[j]);
+      free(gcache.grad_mat_HKY);
+    }
+
+    if (gcache.grad_mat_REV) {
+      for (int j = 0; j < nnodes; j++) {
+        List *gm = gcache.grad_mat_REV[j];
+        for (int p = 0; p < lst_size(gm); p++)
+          mat_free(lst_get_ptr(gm, p));
+        lst_free(gm);
+      }
+      free(gcache.grad_mat_REV);
+    }
+  }
+
+  return ll;
+}
+
+double nj_ll_parallel(TreeModel *mod, CovarData *data, Vector *branchgrad,
+                      int nthreads_requested, NJGradCache *gcache) {
+
+  int ntuples = data->msa->ss->ntuples;
+
+  int maxthreads = NJ_OMP_GET_MAX_THREADS();
+  int nthreads = (nthreads_requested <= maxthreads ? nthreads_requested : maxthreads);
+
+  double ll_total = 0.0;
+
+  /* ---- allocate per-thread accumulators ---- */
+  Vector **thread_branchgrad = NULL;
+  NJDerivs **thread_derivs = NULL;
+  double *thread_ll = calloc(nthreads, sizeof(double));
+
+  if (branchgrad != NULL) {
+    thread_branchgrad = malloc(nthreads * sizeof(Vector *));
+    thread_derivs = malloc(nthreads * sizeof(NJDerivs *));
+
+    for (int t = 0; t < nthreads; t++) {
+      thread_branchgrad[t] = vec_new(branchgrad->size);
+      vec_zero(thread_branchgrad[t]);
+
+      thread_derivs[t] = malloc(sizeof(NJDerivs));
+      thread_derivs[t]->deriv_hky_kappa = 0.0;
+      thread_derivs[t]->deriv_gtr =
+          (mod->subst_mod == REV ? vec_new(data->gtr_params->size) : NULL);
+    }
+  }
+
+  /* ---- parallel likelihood computation ---- */
+#pragma omp parallel num_threads(nthreads)
+  {
+    int tid = NJ_OMP_GET_THREAD_NUM();
+
+    int start = (tid * ntuples) / nthreads;
+    int end = ((tid + 1) * ntuples) / nthreads;
+
+    List *range = lst_new_int(2);
+    lst_push_int(range, start);
+    lst_push_int(range, end);
+
+    thread_ll[tid] =
+        nj_ll_core(mod, data, (branchgrad ? thread_branchgrad[tid] : NULL),
+                   (branchgrad ? thread_derivs[tid] : NULL), gcache, range);
+
+    lst_free(range);
+  }
+
+  /* ---- reduction ---- */
+  for (int t = 0; t < nthreads; t++)
+    ll_total += thread_ll[t];
+
+  if (branchgrad != NULL) {
+    vec_zero(branchgrad);
+    for (int t = 0; t < nthreads; t++)
+      vec_plus_eq(branchgrad, thread_branchgrad[t]);
+
+    data->deriv_hky_kappa = 0.0;
+    for (int t = 0; t < nthreads; t++)
+      data->deriv_hky_kappa += thread_derivs[t]->deriv_hky_kappa;
+
+    if (mod->subst_mod == REV) {
+      vec_zero(data->deriv_gtr);
+      for (int t = 0; t < nthreads; t++)
+        vec_plus_eq(data->deriv_gtr, thread_derivs[t]->deriv_gtr);
+    }
+  }
+
+  /* ---- cleanup ---- */
+  free(thread_ll);
+
+  if (branchgrad != NULL) {
+    for (int t = 0; t < nthreads; t++) {
+      vec_free(thread_branchgrad[t]);
+      if (thread_derivs[t]->deriv_gtr)
+        vec_free(thread_derivs[t]->deriv_gtr);
+      free(thread_derivs[t]);
+    }
+    free(thread_branchgrad);
+    free(thread_derivs);
+  }
+
+  return ll_total;
 }
