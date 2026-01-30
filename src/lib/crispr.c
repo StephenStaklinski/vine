@@ -390,6 +390,8 @@ double cpr_compute_log_likelihood(CrisprMutModel *cprmod, Vector *branchgrad) {
 	  vec_set(lscale, n->id,
 		  vec_get(lscale, n->id) + log(maxv));
 	}
+	else
+	  cprmod->zero_likl = TRUE;
 
 	/* zero out tiny values to save time later */
         for (i = 0; i < lst_size(par_states); i++) {
