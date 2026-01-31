@@ -25,6 +25,17 @@ cmake --install build
 Here, `PHAST_ROOT` should point to the installation prefix of PHAST (e.g.,
 `/opt/homebrew/opt/phast`).
 
+## Multithreading Support
+Uses OpenMP by default if found by CMake. OpenMP is not required. 
+
+Note for MacOS: if OpenMP is not found by default, try explicitly
+specifying the LLVM compiler during configuration, e.g., 
+```sh
+cmake -S . -B build -DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm/bin/clang
+```
+
+The number of threads can be controlled with the -j option.
+
 ## Usage
 
 For usage of the main vine executable and supporting programs, run them

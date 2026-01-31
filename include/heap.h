@@ -1,7 +1,7 @@
 /*
  * VINE: Variational Inference with Node Embeddings
  *
- * Copyright (c) 2025, Adam Siepel
+ * Copyright (c) 2025-2026, Cold Spring Harbor Laboratory
  * All rights reserved.
  *
  * This file is part of VINE and is distributed under the BSD 3-Clause License.
