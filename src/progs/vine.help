@@ -1,4 +1,4 @@
-char HELP[13978] = "\nPROGRAM: vine [Variational Inference with Node Embedding]\n\
+char HELP[14042] = "\nPROGRAM: vine [Variational Inference with Node Embedding]\n\
 \n\
 USAGE: vine [OPTIONS] alignment.fa > trees.nwk\n\
 \n\
@@ -29,7 +29,10 @@ TYPICAL COMMANDS:\n\
 MAIN OPTIONS:\n\
     --help, -h\n\
         Display this help message and exit.\n\
-        \n\
+\n\
+    --version, -x\n\
+        Display the current version number.\n\
+\n\
     --dimensionality, -D <D>\n\
         Set dimensionality of the space in which taxa are represented\n\
         to <D>.  Higher values will allow for richer representations\n\
