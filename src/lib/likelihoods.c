@@ -379,11 +379,10 @@ double nj_ll_core(TreeModel *mod, CovarData *data, NJDerivs *derivs,
 
             /* accumulate alpha derivative via chain rule:
                dlogL_k/dalpha = sum_n (dlogL_k/dd_n) * d_n * (dr_k/dalpha) / r_k */
-            if (dr_dalpha != NULL && mod->rK[rcat] > 0.0)
+            if (dr_dalpha != NULL && mod->rK[rcat] > 0.0) 
               derivs->deriv_dgamma_alpha +=
-                pik[rcat] * deriv * n->dparent *
-                vec_get(dr_dalpha, rcat) / mod->rK[rcat] *
-                vec_get(tuplecounts, tupleidx);
+                  pik[rcat] * deriv * n->dparent * vec_get(dr_dalpha, rcat) /
+                  mod->rK[rcat] * vec_get(tuplecounts, tupleidx);
           }
 
           /* in these cases, we need a partial derivatives for substitution rates also;
@@ -423,7 +422,7 @@ double nj_ll_core(TreeModel *mod, CovarData *data, NJDerivs *derivs,
     } /* end if computing derivatives */
   } /* end loop over tuples */
 
-  if (dr_dalpha != NULL)
+  if (dr_dalpha != NULL) 
     vec_free(dr_dalpha);
 
   for (rcat = 0; rcat < mod->nratecats; rcat++) {
