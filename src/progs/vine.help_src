@@ -31,7 +31,7 @@ MAIN OPTIONS:
         Display this help message and exit.
 
     --version, -x
-        Display the current version number.
+        Display the current version number and exit.
 
     --dimensionality, -D <D>
         Set dimensionality of the space in which taxa are represented
