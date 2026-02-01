@@ -29,7 +29,10 @@ TYPICAL COMMANDS:
 MAIN OPTIONS:
     --help, -h
         Display this help message and exit.
-        
+
+    --version, -x
+        Display the current version number.
+
     --dimensionality, -D <D>
         Set dimensionality of the space in which taxa are represented
         to <D>.  Higher values will allow for richer representations
