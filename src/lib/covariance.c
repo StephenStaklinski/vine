@@ -129,6 +129,7 @@ CovarData *nj_new_covar_data(enum covar_type covar_param, Matrix *dist, int dim,
   retval->taylor = use_taylor ? tay_new(retval) : NULL;
   retval->variational_iter = 0;
   retval->nthreads = 1;
+  retval->dgamma_cats = 1;
   
   if (radial_flow == TRUE) {
     retval->rf = rf_new(retval->nseqs, dim);

@@ -95,7 +95,9 @@ typedef struct cvdat {
   struct taylor_data *taylor; /* auxiliary data for Taylor approximation to
                                  ELBO (or NULL) */
   int variational_iter;       /* current iteration of variational inference */
-  int nthreads; 
+  int nthreads;
+  int dgamma_cats; /* number of discrete gamma categories for rate variation */
+  double deriv_dgamma_alpha; /* derivative wrt alpha if >1 category */
 } CovarData;
 
 void nj_update_covariance(multi_MVN *mmvn, CovarData *data);

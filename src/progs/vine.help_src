@@ -54,6 +54,11 @@ MAIN OPTIONS:
     	calculations.  All free parameters will be estimated from the
     	data.
 
+    --dgamma, -K <K>    
+        Use Yang's discrete gamma model for rate variation across
+        sites, with <K> rate categories.  Can be used with DNA
+        substitution models only (not CRISPR).
+	
     --logfile, -l <logfile.txt>
         Output detailed log for variational inference to specified file
 
@@ -199,7 +204,7 @@ HYPERBOLIC GEOMETRY:
        using the arcosh function and scaled according to the specified
        curvature (see --negcurvature).
  
-    --negcurvature, -K, <K>
+    --negcurvature, -w, <K>
        (for use with --hyperbolic) Set the negative curvature of the
        hyperbolic embedding space to <K> (default 1).  A larger value
        causes the space to be more curved and stretches how far apart the

@@ -1,4 +1,4 @@
-char HELP[13760] = "\nPROGRAM: vine [Variational Inference with Node Embedding]\n\
+char HELP[13978] = "\nPROGRAM: vine [Variational Inference with Node Embedding]\n\
 \n\
 USAGE: vine [OPTIONS] alignment.fa > trees.nwk\n\
 \n\
@@ -54,6 +54,11 @@ MAIN OPTIONS:\n\
     	calculations.  All free parameters will be estimated from the\n\
     	data.\n\
 \n\
+    --dgamma, -K <K>    \n\
+        Use Yang's discrete gamma model for rate variation across\n\
+        sites, with <K> rate categories.  Can be used with DNA\n\
+        substitution models only (not CRISPR).\n\
+	\n\
     --logfile, -l <logfile.txt>\n\
         Output detailed log for variational inference to specified file\n\
 \n\
@@ -199,7 +204,7 @@ HYPERBOLIC GEOMETRY:\n\
        using the arcosh function and scaled according to the specified\n\
        curvature (see --negcurvature).\n\
  \n\
-    --negcurvature, -K, <K>\n\
+    --negcurvature, -w, <K>\n\
        (for use with --hyperbolic) Set the negative curvature of the\n\
        hyperbolic embedding space to <K> (default 1).  A larger value\n\
        causes the space to be more curved and stretches how far apart the\n\

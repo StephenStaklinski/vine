@@ -50,7 +50,7 @@ typedef struct neigh_struc {
 } Neighbors;
 
 void nj_resetQ(Matrix *Q, Matrix *D, Vector *active, Vector *sums, int *u,
-	       int *v, int maxidx);
+               int *v, int maxidx);
 
 void nj_updateD(Matrix *D, int u, int v, int w, Vector *active, Vector *sums);
 

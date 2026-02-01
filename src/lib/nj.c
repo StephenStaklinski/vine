@@ -90,7 +90,7 @@ void nj_updateD(Matrix *D, int u, int v, int w, Vector *active, Vector *sums) {
     die("ERROR nj_updateD: too few active nodes\n");
   
   mat_set(D, u, w, 0.5 * mat_get(D, u, v) +
-	  1.0/(2.0*(n-2)) * (vec_get(sums, u) - vec_get(sums, v)));
+          1.0/(2.0*(n-2)) * (vec_get(sums, u) - vec_get(sums, v)));
 
   mat_set(D, v, w, mat_get(D, u, v) - mat_get(D, u, w));
 
@@ -494,8 +494,8 @@ double nj_compute_JC_dist(MSA *msa, int i, int j) {
   double d;
   for (k = 0; k < msa->length; k++) {
     if (msa->seqs[i][k] == GAP_CHAR || msa->seqs[j][k] == GAP_CHAR ||
-	msa->is_missing[(int)msa->seqs[i][k]] ||
-	msa->is_missing[(int)msa->seqs[j][k]])
+        msa->is_missing[(int)msa->seqs[i][k]] ||
+        msa->is_missing[(int)msa->seqs[j][k]])
       continue;
     n++;
     if (msa->seqs[i][k] != msa->seqs[j][k])

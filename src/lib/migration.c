@@ -334,43 +334,43 @@ double mig_compute_log_likelihood(TreeModel *mod, MigTable *mg,
       /* do this in a way that handles scaling.  first compute
          unnormalized inside values */
       for (i = 0; i < nstates; i++) {
-	double totl = 0.0, totr = 0.0;
+        double totl = 0.0, totr = 0.0;
 
-	for (j = 0; j < nstates; j++)
-	  totl += pL[j][n->lchild->id] *
-		  mm_get(lsubst_mat, i, j);
+        for (j = 0; j < nstates; j++)
+          totl += pL[j][n->lchild->id] *
+                  mm_get(lsubst_mat, i, j);
 
-	for (k = 0; k < nstates; k++)
-	  totr += pL[k][n->rchild->id] *
-		  mm_get(rsubst_mat, i, k);
+        for (k = 0; k < nstates; k++)
+          totr += pL[k][n->rchild->id] *
+                  mm_get(rsubst_mat, i, k);
 
-	pL[i][n->id] = totl * totr;
+        pL[i][n->id] = totl * totr;
       }
 
       /* nodewise max-normalization across states */
       double maxv = 0.0;
       for (i = 0; i < nstates; i++)
-	if (pL[i][n->id] > maxv)
-	  maxv = pL[i][n->id];
+        if (pL[i][n->id] > maxv)
+          maxv = pL[i][n->id];
 
       /* propagate scaling from children */
       vec_set(lscale, n->id,
-	      vec_get(lscale, n->lchild->id) +
-	      vec_get(lscale, n->rchild->id));
+              vec_get(lscale, n->lchild->id) +
+              vec_get(lscale, n->rchild->id));
 
       if (maxv > 0.0) {
-	/* normalize and update scale */
-	for (i = 0; i < nstates; i++)
-	  pL[i][n->id] /= maxv;
+        /* normalize and update scale */
+        for (i = 0; i < nstates; i++)
+          pL[i][n->id] /= maxv;
 
-	vec_set(lscale, n->id,
-		vec_get(lscale, n->id) + log(maxv));
+        vec_set(lscale, n->id,
+                vec_get(lscale, n->id) + log(maxv));
       }
       else 
 
       /* zero out tiny values to save time later */
       for (i = 0; i < nstates; i++)
-	if (pL[i][n->id] < REL_CUTOFF)
+        if (pL[i][n->id] < REL_CUTOFF)
           pL[i][n->id] = 0.0;
     }
   }
@@ -398,14 +398,14 @@ double mig_compute_log_likelihood(TreeModel *mod, MigTable *mg,
         for (i = 0; i < nstates; i++) {
           pLbar[i][n->id] = root_eqfreqs[i];
           if (pLbar[i][n->id] > maxv)
-	    maxv = pLbar[i][n->id];
-	}
+            maxv = pLbar[i][n->id];
+        }
 
         /* lscale_o[root] is already zero from vec_zero */
-	if (maxv > 0.0) {
-	  for (i = 0; i < nstates; i++)
-	    pLbar[i][n->id] /= maxv;
-	  vec_set(lscale_o, n->id, log(maxv));
+        if (maxv > 0.0) {
+          for (i = 0; i < nstates; i++)
+            pLbar[i][n->id] /= maxv;
+          vec_set(lscale_o, n->id, log(maxv));
         }        
       }
       else {            /* recursive case */
@@ -413,50 +413,50 @@ double mig_compute_log_likelihood(TreeModel *mod, MigTable *mg,
         par_subst_mat = lst_get_ptr(mg->Pt, n->id);
         sib_subst_mat = lst_get_ptr(mg->Pt, sibling->id);
 
-	/* first form tmp[j] = sum_k pLbar(parent=j) * pL(sibling=k) * P_sib(j,k) */
-	for (j = 0; j < nstates; j++) {
-	  tmp[j] = 0.0;
-	  double a = pLbar[j][n->parent->id];
+        /* first form tmp[j] = sum_k pLbar(parent=j) * pL(sibling=k) * P_sib(j,k) */
+        for (j = 0; j < nstates; j++) {
+          tmp[j] = 0.0;
+          double a = pLbar[j][n->parent->id];
 
-	  if (a == 0.0) continue;
+          if (a == 0.0) continue;
 
-	  for (k = 0; k < nstates; k++) {
-	    double b = pL[k][sibling->id];
-	    if (b > 0.0)
-	      tmp[j] += a * b * mm_get(sib_subst_mat, j, k);
-	  }
-	}
-	
-	/* now propagate to child */
-	for (i = 0; i < nstates; i++) {
-	  double sum = 0.0;
-	  for (j = 0; j < nstates; j++)
-	    sum += tmp[j] * mm_get(par_subst_mat, j, i);
-	  pLbar[i][n->id] = sum;
-	}
+          for (k = 0; k < nstates; k++) {
+            double b = pL[k][sibling->id];
+            if (b > 0.0)
+              tmp[j] += a * b * mm_get(sib_subst_mat, j, k);
+          }
+        }
+        
+        /* now propagate to child */
+        for (i = 0; i < nstates; i++) {
+          double sum = 0.0;
+          for (j = 0; j < nstates; j++)
+            sum += tmp[j] * mm_get(par_subst_mat, j, i);
+          pLbar[i][n->id] = sum;
+        }
 
-	/* nodewise normalization of outside vector */
-	double maxv = 0.0;
-	for (i = 0; i < nstates; i++)
-	  if (pLbar[i][n->id] > maxv)
-	    maxv = pLbar[i][n->id];
+        /* nodewise normalization of outside vector */
+        double maxv = 0.0;
+        for (i = 0; i < nstates; i++)
+          if (pLbar[i][n->id] > maxv)
+            maxv = pLbar[i][n->id];
 
-	/* bookkeeping for scaling */
-	vec_set(lscale_o, n->id,
-		vec_get(lscale_o, n->parent->id) +
-		vec_get(lscale, sibling->id));
+        /* bookkeeping for scaling */
+        vec_set(lscale_o, n->id,
+                vec_get(lscale_o, n->parent->id) +
+                vec_get(lscale, sibling->id));
 
-	if (maxv > 0.0) {
-	  for (i = 0; i < nstates; i++)
-	    pLbar[i][n->id] /= maxv;
+        if (maxv > 0.0) {
+          for (i = 0; i < nstates; i++)
+            pLbar[i][n->id] /= maxv;
 
-	  vec_set(lscale_o, n->id,
-		  vec_get(lscale_o, n->id) + log(maxv));
-	}
+          vec_set(lscale_o, n->id,
+                  vec_get(lscale_o, n->id) + log(maxv));
+        }
 
-	for (i = 0; i < nstates; i++)
-	  if (pLbar[i][n->id] < REL_CUTOFF)
-	    pLbar[i][n->id] = 0.0;
+        for (i = 0; i < nstates; i++)
+          if (pLbar[i][n->id] < REL_CUTOFF)
+            pLbar[i][n->id] = 0.0;
       }
     }
 
@@ -477,7 +477,7 @@ double mig_compute_log_likelihood(TreeModel *mod, MigTable *mg,
         
       n = lst_get_ptr(mod->tree->nodes, nodeidx);
       par = n->parent;
-	
+        
       if (par == NULL) 
         continue;
        
@@ -585,9 +585,9 @@ void mig_update_subst_matrices(TreeNode *tree, MigTable *mg) {
     /* ensure no negative values due to numerical error */
     for (int i = 0; i < mg->nstates; i++) {
       for (int j = 0; j < mg->nstates; j++) {
-	double p = mm_get(P, i, j);
-	if (p < 0.0)
-	  mm_set(P, i, j, 0.0);
+        double p = mm_get(P, i, j);
+        if (p < 0.0)
+          mm_set(P, i, j, 0.0);
       }
     }
   }
@@ -703,7 +703,7 @@ void mig_sample_states(TreeNode *tree, MigTable *mg,
 
       rescale = FALSE;
       for (int pass = 0; pass < 2 && (pass == 0 || rescale); pass++) {
-	for (i = 0; i < nstates; i++) {
+        for (i = 0; i < nstates; i++) {
           double totl = 0.0, totr = 0.0;
         for (j = 0; j < nstates; j++)
           totl += pL[j][n->lchild->id] *
@@ -713,7 +713,7 @@ void mig_sample_states(TreeNode *tree, MigTable *mg,
           totr += pL[k][n->rchild->id] *
             mm_get_floor(rsubst_mat, i, k);
 
-	if (pass == 0 && totl > 0.0 && totr > 0.0 &&
+        if (pass == 0 && totl > 0.0 && totr > 0.0 &&
             (totl < scaling_threshold || totr < scaling_threshold))
           rescale = TRUE; /* will trigger second pass */
 
@@ -1139,7 +1139,7 @@ void mig_grad_REV_dr(MigTable *mg, List *dP_dr_lst, double t) {
 
       if (dq[l][m] != 0)    /* row/col pairs should be unique */
         die("ERROR tm_grad_REV_dr: dq[%i][%i] should be zero but is %f\n",
-	    l, m, dq[l][m]);
+            l, m, dq[l][m]);
 
       dq[l][m] = vec_get(mg->backgd_freqs, m);      
       if (dq[l][m] == 0) continue; 

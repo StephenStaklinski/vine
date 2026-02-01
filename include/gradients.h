@@ -54,5 +54,7 @@ void nj_dt_dD_num(Matrix *dt_dD, Matrix *D, TreeModel *mod, CovarData *data);
 double nj_dL_dx_smartest(Vector *x, Vector *dL_dx, TreeModel *mod, 
                          CovarData *data, double *nf_logdet, double *migll);
 
+void nj_dr_dalpha_gamma(Vector *dr_dalpha, const TreeModel *mod);
+
 
 #endif

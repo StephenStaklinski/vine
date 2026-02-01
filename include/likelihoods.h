@@ -32,22 +32,24 @@
 
 /* Per-thread derivative accumulators (thread-local) */
 typedef struct {
-  double deriv_hky_kappa;
-  Vector *deriv_gtr;   /* NULL unless REV */
+  Vector *branchgrad;      /* [nbranches], mixed across categories */
+  double deriv_hky_kappa;  /* only if HKY85 */
+  Vector *deriv_gtr;       /* only if REV */
+  double deriv_dgamma_alpha; /* only if dgamma_cats > 1 */
 } NJDerivs;
 
 /* read-only cache of gradient matrices (shared across threads) */
 typedef struct {
-  Matrix **grad_mat;          /* [nnodes] */
-  Matrix **grad_mat_HKY;      /* [nnodes] or NULL */
-  List **grad_mat_REV;        /* [nnodes] or NULL */
+  Matrix ***grad_mat;          /* [nnodes][ncats] */
+  Matrix ***grad_mat_HKY;      /* [nnodes][ncats] or NULL */
+  List ***grad_mat_REV;        /* [nnodes][ncats] or NULL */
   Vector *tuplecounts;        /* counts of each unique tuple */
 } NJGradCache;
 
 void nj_reset_tree_model(TreeModel *mod, TreeNode *newtree);
 
-double nj_ll_core(TreeModel *mod, CovarData *data, Vector *branchgrad,
-                  NJDerivs *derivs, NJGradCache *gcache, List *range);
+double nj_ll_core(TreeModel *mod, CovarData *data, NJDerivs *derivs,
+                NJGradCache *gcache, List *range);
 
 int *nj_build_seq_idx(List *leaves, char **names);
 

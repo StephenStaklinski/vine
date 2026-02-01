@@ -22,6 +22,7 @@
 #include <geometry.h>
 #include <upgma.h>
 #include <phast/tree_model.h>
+#include <phast/dgamma.h>
 #include <phast/subst_mods.h>
 #include <phast/sufficient_stats.h>
 #include <mvn.h>
@@ -67,15 +68,16 @@ static inline void write_log_header(FILE *LOGF, int argc, char *argv[]) {
 int main(int argc, char *argv[]) {
   signed char c;
   int opt_idx, i, ntips = 0, nsamples = DEFAULT_NSAMPLES, dim = -1,
-  batchsize = DEFAULT_BATCHSIZE, niter_conv = DEFAULT_NITER_CONV,
-  min_iter = DEFAULT_MIN_ITER, rank = DEFAULT_RANK, nthreads = 1;
+                  batchsize = DEFAULT_BATCHSIZE,
+                  niter_conv = DEFAULT_NITER_CONV, min_iter = DEFAULT_MIN_ITER,
+                  rank = DEFAULT_RANK, nthreads = 1, dgamma_cats = 1;
   unsigned int nj_only = FALSE, random_start = FALSE, hyperbolic = FALSE,
-  embedding_only = FALSE, rejection_sampling = FALSE,
-  mvn_dump = FALSE, natural_grad = FALSE, is_crispr = FALSE,
-  ultrametric = FALSE, radial_flow = FALSE, planar_flow = FALSE, use_taylor = TRUE; 
+               embedding_only = FALSE, rejection_sampling = FALSE,
+               mvn_dump = FALSE, natural_grad = FALSE, is_crispr = FALSE,
+               ultrametric = FALSE, radial_flow = FALSE, planar_flow = FALSE,
+               use_taylor = TRUE;
   MSA *msa = NULL;
   enum covar_type covar_param = CONST;
-
   char *alphabet = "ACGT";
   char **names = NULL;
   msa_format_type format = UNKNOWN_FORMAT;
@@ -118,7 +120,7 @@ int main(int argc, char *argv[]) {
     {"mean", 1, 0, 'm'},
     {"miniter", 1, 0, 'M'},
     {"names", 1, 0, 'n'},
-    {"negcurvature", 1, 0, 'K'},
+    {"negcurvature", 1, 0, 'w'},
     {"nj-only", 0, 0, '0'},
     {"natural-grad", 0, 0, 'N'},
     {"out-dists", 1, 0, 'o'},
@@ -143,13 +145,14 @@ int main(int argc, char *argv[]) {
     {"relclock", 0, 0, 'L'},
     {"migration", 1, 0, 'G'},
     {"primary", 1, 0, '1'},
+    {"dgamma", 1, 0, 'K'},
     {"montecarlo", 0, 0, 'y'},
     {"version", 0, 0, 'x'},
     {"help", 0, 0, 'h'},
     {0, 0, 0, 0}
   };
 
-  while ((c = getopt_long(argc, argv, "0:1:b:B:c:d:D:egG:hHi:FZj:JkK:l:L:m:M:n:No:v:r:Rt:T:VW:S:s:CY:yPp:x", long_opts, &opt_idx)) != -1) {
+  while ((c = getopt_long(argc, argv, "0:1:b:B:c:d:D:egG:hHi:FZj:JkK:l:L:m:M:n:No:v:r:Rt:T:Vw:W:S:s:CY:yPp:x", long_opts, &opt_idx)) != -1) {
     switch (c) {
     case 'b':
       batchsize = atoi(optarg);
@@ -190,7 +193,7 @@ int main(int argc, char *argv[]) {
     case 'j':
       nthreads = atoi(optarg);
       if (nthreads <= 0)
-	die("ERROR: --nthreads must be positive\n");
+        die("ERROR: --nthreads must be positive\n");
       break;
     case 'g':
       subst_mod = REV;
@@ -208,6 +211,11 @@ int main(int argc, char *argv[]) {
       subst_mod = HKY85;
       break;
     case 'K':
+      dgamma_cats = atoi(optarg);
+      if (dgamma_cats <= 0)
+        die("ERROR: --dgamma-cats must be positive\n");
+      break;
+    case 'w':
       negcurvature = atof(optarg);
       if (negcurvature < 0)
         die("ERROR: --negcurvature must be nonnegative\n");
@@ -369,7 +377,11 @@ int main(int argc, char *argv[]) {
       die("--labeled-trees requires --migration\n");
 
   if (use_taylor && batchsize != DEFAULT_BATCHSIZE)
-    fprintf(stderr, "WARNING: --batchsize ignored when using Taylor approximation.\n");
+    fprintf(stderr,
+            "WARNING: --batchsize ignored when using Taylor approximation.\n");
+
+  if (is_crispr == TRUE && dgamma_cats != 1)
+    die("--dgamma-cats cannot be used with CRISPR.\n");
   
   if ((nj_only || embedding_only) &&
       (indistfile != NULL || init_tree != NULL)) {
@@ -495,7 +507,8 @@ int main(int argc, char *argv[]) {
         /* note: this model is just a dummy in the crispr case; tree
            will be used but subst model will be ignored */
         rmat = mm_new(strlen(DEFAULT_ALPHABET), DEFAULT_ALPHABET, CONTINUOUS);
-        mod = tm_new(tree, rmat, NULL, subst_mod, DEFAULT_ALPHABET, 1, 1, NULL, -1);
+        mod = tm_new(tree, rmat, NULL, subst_mod, DEFAULT_ALPHABET,
+                     dgamma_cats, 1, NULL, -1);
         if (msa != NULL)
           tm_init_backgd(mod, msa, -1);
 
@@ -521,7 +534,15 @@ int main(int argc, char *argv[]) {
           nj_init_gtr_mapping(mod);
           tm_set_rate_matrix(mod, covar_data->gtr_params, 0);
         }
-        else (assert(0)); /* should not get here */
+        else
+          (assert(0)); /* should not get here */
+
+        if (dgamma_cats > 1) {
+          fprintf(stderr, "Using %d discrete gamma rate categories...\n", dgamma_cats);
+          covar_data->dgamma_cats = dgamma_cats;
+          DiscreteGamma(mod->freqK, mod->rK, mod->alpha, mod->alpha, 
+            mod->nratecats, 0); 
+        }
       }
 
       /* initialize parameters of multivariate normal */
@@ -540,14 +561,16 @@ int main(int argc, char *argv[]) {
       }
 
       if (use_taylor)
-	fprintf(stderr, "Using Taylor approximation for ELBO...\n");
+        fprintf(stderr, "Using Taylor approximation for ELBO...\n");
       else
-	fprintf(stderr, "Using Monte Carlo estimation of ELBO...\n");
+        fprintf(stderr, "Using Monte Carlo estimation of ELBO...\n");
 
       if (nthreads > 1) {
         covar_data->nthreads = nthreads;
-	fprintf(stderr, "Using %d threads for likelihood calculations...\n", nthreads);
+        fprintf(stderr, "Using %d threads for likelihood calculations...\n", nthreads);
       }
+      else
+        fprintf(stderr, "Multithreading is OFF (see -j)...\n");  
 
       fprintf(stderr, "Starting variational inference...\n");
 

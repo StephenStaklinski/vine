@@ -278,9 +278,9 @@ void nj_test_D(Matrix *D) {
   for (i = 0; i < n; i++) {
     for (j = 0; j < n; j++) {
       if (j <= i && mat_get(D, i, j) != 0)
-	die("ERROR in nj_test_D: distance matrix must be upper triangular and have zeroes on main diagonal.\n");
+        die("ERROR in nj_test_D: distance matrix must be upper triangular and have zeroes on main diagonal.\n");
       else if (mat_get(D, i, j) < 0 || !isfinite(mat_get(D, i, j)))
-	die("ERROR in nj_test_D: entries in distance matrix must be nonnegative and finite\n");
+        die("ERROR in nj_test_D: entries in distance matrix must be nonnegative and finite\n");
     }
   }
 }

@@ -16,6 +16,7 @@
 #include <assert.h>
 #include <float.h>
 #include <phast/tree_model.h>
+#include <phast/dgamma.h>
 #include <nuisance.h>
 #include <nj.h>
 
@@ -33,6 +34,9 @@ int nj_get_num_nuisance_params(TreeModel *mod, CovarData *data) {
   else if (mod->subst_mod == REV)
     retval += data->gtr_params->size;
 
+  if (data->dgamma_cats > 1)
+    retval += 1;
+  
   if (data->rf != NULL)
     retval += data->rf->ctr->size + 2;
 
@@ -71,7 +75,13 @@ char *nj_get_nuisance_param_name(TreeModel *mod, CovarData *data, int idx) {
     }
     idx -= data->gtr_params->size;
   }
-  
+
+  if (data->dgamma_cats > 1) {
+    if (idx == 0)
+      return "alpha";
+    idx -= 1;
+  }
+
   if (data->rf != NULL) {
     if (idx < data->rf->ctr->size) {
       char *tmp = smalloc(15 * sizeof(char));
@@ -144,6 +154,9 @@ void nj_update_nuis_grad(TreeModel *mod, CovarData *data, Vector *nuis_grad) {
       vec_set(nuis_grad, idx++, vec_get(data->deriv_gtr, i));
   }
 
+  if (data->dgamma_cats > 1)
+    vec_set(nuis_grad, idx++, data->deriv_dgamma_alpha);
+  
   if (data->rf != NULL) {
     for (i = 0; i < data->rf->ctr_grad->size; i++)
       vec_set(nuis_grad, idx++, vec_get(data->rf->ctr_grad, i));
@@ -186,6 +199,9 @@ void nj_save_nuis_params(Vector *stored_vals, TreeModel *mod, CovarData *data) {
     for (i = 0; i < data->gtr_params->size; i++)
       vec_set(stored_vals, idx++, vec_get(data->gtr_params, i));
   }
+
+  if (data->dgamma_cats > 1)
+    vec_set(stored_vals, idx++, mod->alpha);
   
   if (data->rf != NULL) {
     for (i = 0; i < data->rf->ctr->size; i++)
@@ -235,6 +251,12 @@ void nj_update_nuis_params(Vector *stored_vals, TreeModel *mod, CovarData *data)
     tm_set_rate_matrix(mod, data->gtr_params, 0);
     tm_scale_rate_matrix(mod);
     mm_diagonalize(mod->rate_matrix);
+  }
+
+  if (data->dgamma_cats > 1) {
+    mod->alpha = vec_get(stored_vals, idx++);
+    DiscreteGamma(mod->freqK, mod->rK, mod->alpha, mod->alpha, 
+                  mod->nratecats, 0); 
   }
   
   if (data->rf != NULL) {
@@ -313,6 +335,18 @@ void nj_nuis_param_pluseq(TreeModel *mod, CovarData *data, int idx, double inc) 
     idx -= data->gtr_params->size;
   }
 
+  if (data->dgamma_cats > 1) {
+    if (idx == 0) {
+      mod->alpha += inc;
+      if (mod->alpha < 1e-6)
+        mod->alpha = 1e-6;
+      DiscreteGamma(mod->freqK, mod->rK, mod->alpha, mod->alpha,
+                    mod->nratecats, 0);
+      return;
+    }
+    idx -= 1;
+  }
+  
   if (data->rf != NULL) {
     if (data->rf->center_update == TRUE) {
       if (idx < data->rf->ctr->size) {
@@ -397,6 +431,12 @@ double nj_nuis_param_get(TreeModel *mod, CovarData *data, int idx) {
     idx -= data->gtr_params->size;
   }
 
+  if (data->dgamma_cats > 1) {
+    if (idx == 0)
+      return mod->alpha;
+    idx -= 1;
+  }
+  
   if (data->rf != NULL) {
     if (data->rf->center_update == TRUE) {
       if (idx < data->rf->ctr->size) 

@@ -23,6 +23,7 @@
 #include <variational.h>
 #include <geometry.h>
 #include <covariance.h>
+#include <phast/dgamma.h>
 
 /* compute the gradient of the log likelihood for a tree model with
    respect to the free parameters of the MVN averaging distribution,
@@ -886,4 +887,37 @@ void nj_dL_dD_from_neighbors(const Neighbors *nb, Vector *dL_dt,
   sfree(active_states);
 }
 
+/* calculate gradients dr_i/dalpha for discrete gamma model, for use
+   in chain-rule calculation of gradient wrt alpha.  Use them to
+   populate the provided vector dr_dalpha.  Calculation is done by
+   finite differences using DiscreteGamma function from PHAST
+   (inherited from PAML).  */
+void nj_dr_dalpha_gamma(Vector *dr_dalpha, const TreeModel *mod) {
+  int ncats = mod->nratecats;
+  const double alpha_floor = 1.0e-6;   /* choose your floor */
 
+  double h = 1.0e-5 * (1.0 + fabs(mod->alpha)); /* step size for finite diff */
+  int k;
+
+  double a_plus  = mod->alpha + h;
+  double a_minus = mod->alpha - h;
+
+  assert(dr_dalpha && dr_dalpha->size == ncats);
+
+  double *r_plus  = (double *)smalloc(ncats * sizeof(double));
+  double *r_minus = (double *)smalloc(ncats * sizeof(double));
+
+  if (a_minus < alpha_floor) {
+    a_minus = (mod->alpha < alpha_floor ? alpha_floor : mod->alpha);
+    a_plus = a_minus + h;
+  }
+  
+  DiscreteGamma(mod->freqK, r_plus,  a_plus,  a_plus,  ncats, 0);
+  DiscreteGamma(mod->freqK, r_minus, a_minus, a_minus, ncats, 0);
+  
+  for (k = 0; k < ncats; k++)
+    vec_set(dr_dalpha, k, (r_plus[k] - r_minus[k]) / (a_plus - a_minus));
+  
+  sfree(r_plus);
+  sfree(r_minus);
+}

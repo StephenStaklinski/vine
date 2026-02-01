@@ -365,39 +365,39 @@ double cpr_compute_log_likelihood(CrisprMutModel *cprmod, Vector *branchgrad) {
           }
           
           pL[pstate][n->id] = totl * totr;
-	}
+        }
 
         /* nodewise max-normalization across states */
-	double maxv = 0.0;
-	for (i = 0; i < lst_size(par_states); i++) {
+        double maxv = 0.0;
+        for (i = 0; i < lst_size(par_states); i++) {
           pstate = lst_get_int(par_states, i);
-	  if (pL[pstate][n->id] > maxv)
+          if (pL[pstate][n->id] > maxv)
             maxv = pL[pstate][n->id];
         }
 
-	/* propagate scaling from children */
-	vec_set(lscale, n->id,
-		vec_get(lscale, n->lchild->id) +
-		vec_get(lscale, n->rchild->id));
+        /* propagate scaling from children */
+        vec_set(lscale, n->id,
+                vec_get(lscale, n->lchild->id) +
+                vec_get(lscale, n->rchild->id));
 
-	if (maxv > 0.0) {
+        if (maxv > 0.0) {
           /* normalize and update scale */
           for (i = 0; i < lst_size(par_states); i++) {
             pstate = lst_get_int(par_states, i);
             pL[pstate][n->id] /= maxv;
           }
 
-	  vec_set(lscale, n->id,
-		  vec_get(lscale, n->id) + log(maxv));
-	}
-	else
-	  cprmod->zero_likl = TRUE;
+          vec_set(lscale, n->id,
+                  vec_get(lscale, n->id) + log(maxv));
+        }
+        else
+          cprmod->zero_likl = TRUE;
 
-	/* zero out tiny values to save time later */
+        /* zero out tiny values to save time later */
         for (i = 0; i < lst_size(par_states); i++) {
           pstate = lst_get_int(par_states, i);
-	  if (pL[pstate][n->id] < REL_CUTOFF)
-	    pL[pstate][n->id] = 0.0;
+          if (pL[pstate][n->id] < REL_CUTOFF)
+            pL[pstate][n->id] = 0.0;
         }
       }
     } 
@@ -434,16 +434,16 @@ double cpr_compute_log_likelihood(CrisprMutModel *cprmod, Vector *branchgrad) {
             pstate = lst_get_int(par_states, i);
             pLbar[pstate][n->id] = root_eqfreqs[pstate];
             if (pLbar[pstate][n->id] > maxv)
-	      maxv = pLbar[pstate][n->id];
-	  }
+              maxv = pLbar[pstate][n->id];
+          }
 
           /* lscale_o[root] is already zero from vec_zero */
-	  if (maxv > 0.0) {
+          if (maxv > 0.0) {
             for (i = 0; i < lst_size(par_states); i++) {
               pstate = lst_get_int(par_states, i);
               pLbar[pstate][n->id] /= maxv;
             }
-	    vec_set(lscale_o, n->id, log(maxv));
+            vec_set(lscale_o, n->id, log(maxv));
           }
         }
         else {            /* recursive case */
@@ -456,21 +456,21 @@ double cpr_compute_log_likelihood(CrisprMutModel *cprmod, Vector *branchgrad) {
           child_states = cpr_get_state_set(ancsets, n, nstates);
           sib_states = cpr_get_state_set(ancsets, sibling, nstates);
 
-	  /* first form tmp[j] = sum_k pLbar(parent=j) * pL(sibling=k) * P_sib(j,k) */
+          /* first form tmp[j] = sum_k pLbar(parent=j) * pL(sibling=k) * P_sib(j,k) */
           for (j = 0; j < lst_size(par_states); j++) {
             pstate = lst_get_int(par_states, j);
-	    tmp[pstate] = 0.0;
-	    double a = pLbar[pstate][n->parent->id];
+            tmp[pstate] = 0.0;
+            double a = pLbar[pstate][n->parent->id];
 
-	    if (a == 0.0) continue;
+            if (a == 0.0) continue;
 
             for (k = 0; k < lst_size(sib_states); k++) {
               sstate = lst_get_int(sib_states, k);
-	      double b = pL[sstate][sibling->id];
-	      if (b > 0.0)
-		tmp[pstate] += a * b * mm_get(sib_subst_mat, pstate, sstate);
-	    }
-	  }
+              double b = pL[sstate][sibling->id];
+              if (b > 0.0)
+                tmp[pstate] += a * b * mm_get(sib_subst_mat, pstate, sstate);
+            }
+          }
 
           /* now propagate to child */
           for (i = 0; i < lst_size(child_states); i++) {      /* child state */
@@ -483,35 +483,35 @@ double cpr_compute_log_likelihood(CrisprMutModel *cprmod, Vector *branchgrad) {
             pLbar[cstate][n->id] = sum;
           }
           
-	  /* nodewise normalization of outside vector */
+          /* nodewise normalization of outside vector */
           double maxv = 0.0;
           for (i = 0; i < lst_size(child_states); i++) {   
             cstate = lst_get_int(child_states, i);
-	    if (pLbar[cstate][n->id] > maxv)
+            if (pLbar[cstate][n->id] > maxv)
               maxv = pLbar[cstate][n->id];
           }
 
-	  /* bookkeeping for scaling */
-	  vec_set(lscale_o, n->id,
-		  vec_get(lscale_o, n->parent->id) +
-		  vec_get(lscale, sibling->id));
+          /* bookkeeping for scaling */
+          vec_set(lscale_o, n->id,
+                  vec_get(lscale_o, n->parent->id) +
+                  vec_get(lscale, sibling->id));
 
           if (maxv > 0.0) {
             for (i = 0; i < lst_size(child_states); i++) {   
               cstate = lst_get_int(child_states, i);
-	      pLbar[cstate][n->id] /= maxv;
+              pLbar[cstate][n->id] /= maxv;
             }
             
-	    vec_set(lscale_o, n->id,
-		    vec_get(lscale_o, n->id) + log(maxv));
-	  }
+            vec_set(lscale_o, n->id,
+                    vec_get(lscale_o, n->id) + log(maxv));
+          }
 
           for (i = 0; i < lst_size(child_states); i++) {   
             cstate = lst_get_int(child_states, i);
-	    if (pLbar[cstate][n->id] < REL_CUTOFF)
+            if (pLbar[cstate][n->id] < REL_CUTOFF)
               pLbar[cstate][n->id] = 0.0;
           }
-	}
+        }
       }
 
       /* TEMPORARY: check inside/outside */
@@ -532,7 +532,7 @@ double cpr_compute_log_likelihood(CrisprMutModel *cprmod, Vector *branchgrad) {
         
         n = lst_get_ptr(cprmod->mod->tree->nodes, nodeidx);
         par = n->parent;
-	
+        
         if (par == NULL) 
           continue;
        
