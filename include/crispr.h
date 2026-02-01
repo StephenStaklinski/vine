@@ -18,6 +18,9 @@
 #include <phast/tree_model.h>
 #include <phast/vector.h>
 
+/* forward declarations to avoid circular include with likelihoods.h */
+struct NJDerivs;
+
 /* initialization of silencing rate */
 #define CPR_SIL_RATE_INIT 0.4
 
@@ -41,7 +44,7 @@ typedef struct {
   int nsites;
   int ncells;
   TreeModel *mod; /* encapsulates tree with branch lengths 
-  and some auxiliary data */
+                     and some auxiliary data */
   CrisprMutTable *mut;
   int nstates;
   List *Pt;
@@ -50,12 +53,14 @@ typedef struct {
   List *sitewise_mutrates; /* one vector per site */
   double sil_rate;  /* rate of silencing */
   double deriv_sil; /* latest partial deriv of log likelihood wrt
-  sil_rate */
+                       sil_rate */
   double leading_t; /* length of leading branch to root */
   double deriv_leading_t; /* latest partial deriv of leading branch
-  len */
+                             len */
   unsigned int zero_likl; /* likelihood evaluated to zero; typically
-                             indicates degenerate tree */ 
+                             indicates degenerate tree */
+  int nthreads; /* number of threads to use in
+                   parallel likelihood calculations */
 } CrisprMutModel;
 
 /* auxiliary data used to keep track of restricted ancestral state
@@ -65,7 +70,6 @@ typedef struct {
   int nnodes; /* total number of nodes in tree; root is included but
                  will be ignored */
   int NORESTRICT; /* code indicating no restrictions on state */
-  int *nodetypes; /* element i is type for node->id == i */
   List *unr_lists; /* element i is list containing all integers from 0
                       to i inclusive (cached) */
   List *restr_lists; /* element i is list containing 0 and i
@@ -89,6 +93,12 @@ void cpr_renumber_states(CrisprMutTable *M);
 
 double cpr_compute_log_likelihood(CrisprMutModel *cprmod,
                                   Vector *branchgrad);
+
+double cpr_ll_core(CrisprMutModel *cprmod, struct NJDerivs *derivs,
+                   int *nodetypes, List *range);
+
+double cpr_ll_parallel(CrisprMutModel *cprmod, Vector *branchgrad,
+                       int nthreads_requested);
 
 Matrix *cpr_compute_dist(CrisprMutTable *M);
 
@@ -118,8 +128,11 @@ CrisprAncestralStateSets *cpr_new_state_sets(int nnodes);
 
 void cpr_state_sets_resize(CrisprAncestralStateSets *sets, int newnnodes);
 
-List *cpr_get_state_set(CrisprAncestralStateSets *set, TreeNode *n,
-                        int nstates);
+List *cpr_get_state_set(CrisprAncestralStateSets *set, int *nodetypes,
+                        TreeNode *n, int nstates);
+
+void cpr_prepopulate_state_sets(CrisprAncestralStateSets *sets,
+                                int max_nstates);
 
 void cpr_free_state_sets(CrisprAncestralStateSets *sets);
 

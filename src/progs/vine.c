@@ -566,7 +566,10 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Using Monte Carlo estimation of ELBO...\n");
 
       if (nthreads > 1) {
-        covar_data->nthreads = nthreads;
+        if (is_crispr)
+          crispr_mod->nthreads = nthreads;
+        else
+          covar_data->nthreads = nthreads;
         fprintf(stderr, "Using %d threads for likelihood calculations...\n", nthreads);
       }
       else

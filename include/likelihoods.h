@@ -27,19 +27,29 @@
 #include <tree_prior.h>
 #include <migration.h>
 
+/* forward declaration (defined in covariance.h) */
+#ifndef COV_H
+typedef struct cvdat CovarData;
+#endif
+
 /* number of free parameters in GTR model */
 #define GTR_NPARAMS 6
 
 /* Per-thread derivative accumulators (thread-local) */
-typedef struct {
+typedef struct NJDerivs {
   Vector *branchgrad;      /* [nbranches], mixed across categories */
   double deriv_hky_kappa;  /* only if HKY85 */
   Vector *deriv_gtr;       /* only if REV */
   double deriv_dgamma_alpha; /* only if dgamma_cats > 1 */
+
+  /* below for CRISPR case */
+  double deriv_leading_t; /* partial deriv wrt leading branch length */
+  double deriv_sil;       /* partial deriv wrt silencing rate */
+  unsigned int zero_likl; /* likelihood evaluated to zero */
 } NJDerivs;
 
 /* read-only cache of gradient matrices (shared across threads) */
-typedef struct {
+typedef struct NJGradCache {
   Matrix ***grad_mat;          /* [nnodes][ncats] */
   Matrix ***grad_mat_HKY;      /* [nnodes][ncats] or NULL */
   List ***grad_mat_REV;        /* [nnodes][ncats] or NULL */
