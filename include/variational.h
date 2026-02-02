@@ -22,7 +22,6 @@
    default values.  The learning rate (called alpha) will be passed in
    as a parameter */
 #define ADAM_BETA1 0.9
-//#define ADAM_BETA2 0.999
 #define ADAM_BETA2 0.9
 #define ADAM_EPS 1e-8
 

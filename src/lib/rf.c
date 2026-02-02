@@ -39,11 +39,6 @@ static inline void bm_set(BitMask *m, int bit) {
   m->w[wi] |= (uint64_t)1ULL << bi;
 }
 
-/* dst = a OR b (dst may alias a or b) */
-/* static inline void bm_or(BitMask *dst, const BitMask *a, const BitMask *b) { */
-/*   for (int i = 0; i < dst->W; ++i) dst->w[i] = a->w[i] | b->w[i]; */
-/* } */
-
 /* dst = ~src; then clear high unused bits above nbits */
 static inline void bm_not(BitMask *dst, const BitMask *src, int nbits) {
   for (int i = 0; i < dst->W; ++i) dst->w[i] = ~src->w[i];
@@ -110,19 +105,6 @@ static void mv_free(MaskVec *mv) {
   for (int i = 0; i < mv->size; ++i) bm_free(mv->a[i]);
   sfree(mv->a); mv->a = NULL; mv->size = mv->cap = 0;
 }
-
-/* name lookup (sorted common list) */
-/* static int name_to_index_in_sorted(List *sorted_names, char *name) { */
-/*   int lo = 0, hi = lst_size(sorted_names) - 1; */
-/*   while (lo <= hi) { */
-/*     int mid = (lo + hi) >> 1; */
-/*     String *midS = lst_get_ptr(sorted_names, mid); */
-/*     int cmp = strcmp(name, midS->chars); */
-/*     if (cmp == 0) return mid; */
-/*     if (cmp < 0) hi = mid - 1; else lo = mid + 1; */
-/*   } */
-/*   return -1; */
-/* } */
 
 static inline int name_to_index(Hashtable *ht, const char *name) {
   void *vp = hsh_get(ht, name);

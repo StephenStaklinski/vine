@@ -460,16 +460,6 @@ double mig_compute_log_likelihood(TreeModel *mod, MigTable *mg,
       }
     }
 
-    /* TEMPORARY: check inside/outside */
-    /* for (nodeidx = 0; nodeidx < lst_size(mod->tree->nodes); nodeidx++) { */
-    /*   double pr = 0; */
-    /*   n = lst_get_ptr(mod->tree->nodes, nodeidx); */
-    /*   assert(vec_get(lscale, n->id) == 0 && vec_get(lscale_o, n->id) == 0); */
-    /*   for (j = 0; j < nstates; j++) */
-    /*     pr += pL[j][n->id] * pLbar[j][n->id]; */
-    /*   printf("Tuple %d, node %d: %f (%f)\n", tupleidx, nodeidx, log(pr), log(total_prob)); */
-    /* } */
-
     /* now compute branchwise derivatives in a final pass */
     for (nodeidx = 0; nodeidx < lst_size(mod->tree->nodes); nodeidx++) {
       TreeNode *par, *sibling;
@@ -1030,7 +1020,6 @@ void mig_set_REV_matrix(MigTable *mg, Vector *params) {
   }
   /* NOTE: do not scale in this case; have to allow migration rate to
      be decoupled from mutation rate */
-  /* mig_scale_rate_matrix(mg); */
   mm_diagonalize(mg->rate_matrix);
 }
 

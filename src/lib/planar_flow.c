@@ -137,12 +137,10 @@ void pf_backprop(PlanarFlow *pf, Vector *x, Vector *newgrad, Vector *origgrad) {
 
     /* u^T g_y and w^T g_y (the latter only for an alternative form; not needed) */
     double u_dot_gy = 0.0;
-    /*    double w_dot_gy = 0.0; */
     for (int d = 0; d < D; d++) {
       int idx = i*D + d;
       double gy = vec_get(origgrad, idx);
       u_dot_gy += vec_get(pf->u, d) * gy;
-      /*      w_dot_gy += vec_get(pf->w, d) * gy; */ /* not used below, but handy if you refactor */
     }
 
     /* psi = dt * w, u^T psi, denom for logdet grads */

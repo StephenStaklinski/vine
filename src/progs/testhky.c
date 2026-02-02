@@ -24,9 +24,6 @@ int main(int argc, char *argv[]) {
   msa_format_type format = msa_format_for_content(F, 1);
   MSA * msa = msa_new_from_file_define_format(F, format, DEFAULT_ALPHABET);
 
-  /* Vector *unif = vec_new(4); */
-  /* pv_set_uniform(unif); */
-  
   if (msa->ss == NULL)
     ss_from_msas(msa, 1, TRUE, NULL, NULL, NULL, -1, 0);
 
@@ -41,17 +38,9 @@ int main(int argc, char *argv[]) {
                 CONTINUOUS);
   mod = tm_new(tree, rmat, msa_get_base_freqs(msa, -1, -1), HKY85, DEFAULT_ALPHABET, 
                1, 1, NULL, -1); 
-  /* temporary */
-  /* mod = tm_new(tree, rmat, unif, HKY85, DEFAULT_ALPHABET,  */
-  /*              1, 1, NULL, -1);  */
   tm_set_HKY_matrix(mod, KAPPA, -1);
   tm_scale_rate_matrix(mod);
 
-  /* temporary: JC version */
-  /* mod = tm_new(tree, rmat, unif, JC69, DEFAULT_ALPHABET, */
-  /*              1, 1, NULL, -1); */
-  /* tm_set_JC69_matrix(mod); */
-  
   /* set up CovarData */
   dmat = mat_new(5, 5); /* dummy */
   data = nj_new_covar_data(CONST, dmat, 3, msa, NULL, msa->names,
@@ -77,11 +66,9 @@ int main(int argc, char *argv[]) {
 
   /* compute numerical kappa gradient */
   data->hky_kappa += DERIV_EPS;
-  /* tm_print(stdout, mod); */
   tm_set_HKY_matrix(mod, data->hky_kappa, -1);
   tm_scale_rate_matrix(mod);
   mm_diagonalize(mod->rate_matrix);
-  /* tm_print(stdout, mod); */
   lleps = nj_compute_log_likelihood(mod, data, NULL);
   printf("Numerical kappa gradient: %f\n", (lleps - ll)/DERIV_EPS);
 }

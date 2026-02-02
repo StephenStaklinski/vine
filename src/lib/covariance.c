@@ -144,8 +144,7 @@ CovarData *nj_new_covar_data(enum covar_type covar_param, Matrix *dist, int dim,
     retval->pf = NULL;
     
   nj_set_pointscale(retval);
-  /*  retval->lambda *= retval->pointscale * retval->pointscale; */
-  
+
   if (covar_param == CONST) {
     /* store constant */
     retval->params = vec_new(1);

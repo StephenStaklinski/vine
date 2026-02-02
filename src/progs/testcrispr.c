@@ -16,17 +16,9 @@ int main(int argc, char *argv[]) {
   Vector *grad;
   FILE *F = phast_fopen(argv[1], "r");
   CrisprMutTable *M = cpr_read_table(F);
-  cpr_renumber_states(M); 
-  /* cpr_print_table(M, stdout); */
+  cpr_renumber_states(M);
 
   newM = cpr_new_sitewise_table(M);
-  /* cpr_print_table(newM, stdout); */
-  /* exit(0); */
-  
-
-  /* D = cpr_compute_dist(M); */
-  /* mat_print(D, stdout); */
-  /* cpr_print_table(M, stdout); */
 
   /* read starting tree */
   tree = tr_new_from_file(phast_fopen(argv[2], "r"));
@@ -44,10 +36,8 @@ int main(int argc, char *argv[]) {
   cprmod = cpr_new_model(newM, mod, SITEWISE, UNIF);
   cpr_prep_model(cprmod);
   cpr_update_model(cprmod);
-  /* cpr_print_model(cprmod, stdout); */
-  /* exit(0);  */
 
-  
+
   /* compute likelihood and output */
   grad = vec_new(mod->tree->nnodes - 1);
   ll = cpr_compute_log_likelihood(cprmod, grad);

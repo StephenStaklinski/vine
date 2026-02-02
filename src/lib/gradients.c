@@ -53,14 +53,6 @@ double nj_compute_model_grad(TreeModel *mod, multi_MVN *mmvn, Vector *points,
   /* obtain gradient with respect to points, dL/dx */
   ll_base = nj_dL_dx_smartest(points, dL_dx, mod, data, nf_logdet, migll);
 
-  /* TEMPORARY: compare with numerical version */
-  /* printf("analytical (%f):\n", ll_base); */
-  /* vec_print(dL_dx, stdout); */
-  /* ll_base = nj_dL_dx_dumb(points, dL_dx, mod, data); */
-  /* printf("numerical (%f):\n", ll_base); */
-  /* vec_print(dL_dx, stdout); */
-  /* exit(0); */
-
   if (!isfinite(ll_base)) /* can happen with crispr model; force calling code to deal with it */
     return ll_base;
         
@@ -487,7 +479,6 @@ double nj_dL_dx_smartest(Vector *x, Vector *dL_dx, TreeModel *mod,
   int n = data->nseqs, nbranches = 2*n-2,  /* have to work with the rooted tree here */
     ndist = n * (n-1) / 2, ndim = data->nseqs * data->dim;
   Vector *dL_dt = vec_new(nbranches);
-  /* Matrix *dt_dD = mat_new(nbranches, ndist);  */
   Vector *dL_dD = vec_new(ndist);
   Vector *dL_dy = vec_new(dL_dx->size);
   Vector *migbranchgrad = data->migtable != NULL ?
@@ -507,17 +498,8 @@ double nj_dL_dx_smartest(Vector *x, Vector *dL_dx, TreeModel *mod,
   
    /* set up baseline objects */
   nj_points_to_distances(y, data);
-  /* tree = nj_inf(data->dist, data->names, dt_dD, nb, data);  */
   tree = nj_inf(data->dist, data->names, NULL, nb, data);
   nj_reset_tree_model(mod, tree);
-
-  /* TEMPORARY: compare to numerical gradient */
-  /* fprintf(stdout, "dt_dD (analytical):\n"); */
-  /* mat_print(dt_dD, stdout); */
-  /* nj_dt_dD_num(dt_dD, data->dist, mod, data); */
-  /* fprintf(stdout, "dt_dD (numerical):\n"); */
-  /* mat_print(dt_dD, stdout); */
-  /* exit(0); */
 
   /* calculate log likelihood and analytical gradient */
   if (data->crispr_mod != NULL)
@@ -528,25 +510,6 @@ double nj_dL_dx_smartest(Vector *x, Vector *dL_dx, TreeModel *mod,
   if (!isfinite(ll_base)) /* can happen with crispr; force calling
                              code to deal with it */
     return ll_base;
-
-  /* TEMPORARY: compare dL_dt to numerical version */
-  /* if (data->variational_iter > 200) { */
-  /*   Vector *dL_dt_num = vec_new(dL_dt->size); */
-  /*   nj_dL_dt_num(dL_dt_num, mod, data); */
-  /*   int testdiff = FALSE; */
-  /*   for (i = 0; i < dL_dt->size; i++) { */
-  /*     double v1 = vec_get(dL_dt, i); */
-  /*     double v2 = vec_get(dL_dt_num, i); */
-  /*     if (fabs(v1 - v2)/max(fabs(v1), fabs(v2)) > 0.1) { */
-  /*       testdiff = TRUE; */
-  /*       fprintf(stderr, "Discrepancy in dL_dt at index %d: %f vs %f\n", */
-  /*               i, v1, v2); */
-  /*     } */
-  /*   } */
-  /*   if (!testdiff) */
-  /*     fprintf(stderr, "Iteration %d: dL_dt analytical and numerical match.\n", data->variational_iter); */
-  /*   vec_free(dL_dt_num); */
-  /* } */
 
   /* also get migration log likelihood if needed */
   if (data->migtable != NULL) {
@@ -560,11 +523,6 @@ double nj_dL_dx_smartest(Vector *x, Vector *dL_dx, TreeModel *mod,
   /* for now, keep old and new versions of this calculation for
      cross-checking */
 
-  /* old version using mat_vec_mult */
-  /* Vector *dL_dD_old = vec_new(ndist); */
-  /* mat_vec_mult_transp(dL_dD_old, dt_dD, dL_dt); */
-  /* (note taking transpose of both vector and matrix and expressing
-     result as column vector) */
 
   /* new version using Neighbors structure */
   if (nb != NULL)
@@ -572,18 +530,6 @@ double nj_dL_dx_smartest(Vector *x, Vector *dL_dx, TreeModel *mod,
   else /* UPGMA case can be done in post-processing */
     upgma_dL_dD_from_tree(mod->tree, dL_dt, dL_dD);
 
-  /* TEMPORARY: compare dL_dD to Jacobian version */
-  /* for (int idx = 0; idx < ndist; idx++) { */
-  /*   double v1 = vec_get(dL_dD, idx); */
-  /*   double v2 = vec_get(dL_dD_old, idx); */
-  /*   if (fabs(v1 - v2) > 1e-6) { */
-  /*     fprintf(stderr, "Discrepancy in dL_dD at index %d: %f vs %f\n", */
-  /*             idx, v1, v2); */
-  /*   } */
-  /* } */
-  /* mat_free(dt_dD); */
-  /* vec_free(dL_dD_old); */
-  
   /* save info for Taylor approximation if needed */
   if (data->taylor != NULL) {
     vec_copy(data->taylor->y, y);
@@ -713,7 +659,6 @@ double nj_dL_dx_smartest(Vector *x, Vector *dL_dx, TreeModel *mod,
   }
 
   vec_free(dL_dt);
-  /* mat_free(dt_dD); */
   vec_free(dL_dD);
   vec_free(dL_dy);
   vec_free(y);

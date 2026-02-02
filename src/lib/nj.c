@@ -281,7 +281,6 @@ TreeNode* nj_fast_infer(Matrix *initD, char **names, Matrix *dt_dD, Neighbors *n
   NJHeapNode *hn, *newhn;
   int rev[N];
   int npairs = n * (n-1) / 2, Npairs = N * (N-1) / 2;
-  //  double *Jk = NULL, *Jnext = NULL;
   static SparseMatrix *Jk = NULL, *Jnext = NULL;
     
   if (initD->nrows != initD->ncols || n < 3)
@@ -453,8 +452,7 @@ TreeNode* nj_fast_infer(Matrix *initD, char **names, Matrix *dt_dD, Neighbors *n
   
   if (dt_dD != NULL) 
     nj_backprop_set_dt_dD_sparse(Jk, dt_dD, orign, u, v, node_u->id, node_v->id, active);
-  //nj_backprop_set_dt_dD(Jk, dt_dD, orign, u, v, node_u->id, node_v->id, active);
-  
+
   /* finish set up of tree */
   root->nnodes = N+1;
   tr_reset_nnodes(root);

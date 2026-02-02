@@ -411,9 +411,6 @@ List *nj_var_sample_importance(int nsamples, multi_MVN *mmvn,
   int nprop = max(nsamples * 20, 20000);   
   int dim   = mmvn->d * mmvn->n;
   int nreg  = 12; 
-  /* const double q_center = 0.990; /\* inner shells *\/ */
-  /* const double q_tail   = 0.9990;/\* outer shells *\/ */
-
   /* outputs & workspaces */
   List *retval = lst_new_ptr(nsamples);
   List *props  = lst_new_ptr(nprop);

@@ -420,9 +420,6 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
 
     ll += (log(total_prob) + vec_get(lscale, cprmod->mod->tree->id));
 
-    /* if (vec_get(lscale, cprmod->mod->tree->id) < 4 * lscaling_threshold) */
-    /*   cprmod->zero_likl = TRUE; */ /* major underflow; typically indicates degenerate tree */
-    
     /* to compute gradients efficiently, need to make a second pass
        across the tree to compute "outside" probabilities */
     if (derivs->branchgrad != NULL) {

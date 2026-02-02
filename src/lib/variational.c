@@ -53,8 +53,6 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn,
   Vector *ave_nuis_grad = NULL, *m_nuis = NULL, *v_nuis = NULL,
     *m_nuis_prev = NULL, *v_nuis_prev = NULL, *best_nuis_params = NULL,
     *center = NULL;
-  /* double lastelb = 0.0; */
-  
   if (mmvn->d * mmvn->n != dim * n)
     die("ERROR in nj_variational_inf: bad dimensions\n");
 
@@ -106,11 +104,6 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn,
       fprintf(logf, "%s\t", nj_get_nuisance_param_name(mod, data, j));
     fprintf(logf, "\n");
 
-    /* TEMPORARY */
-    /* fprintf(logf, "mu2\t"); */
-    /* for (j = 0; j < center->size; j++)  */
-    /*   fprintf(logf, "c%d\t", j); */
-    /* fprintf(logf, "dot\tcos\tdelta_elb"); */
   }
 
   /* initialize moments for Adam algorithm */
@@ -246,28 +239,6 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn,
       avell = nj_elbo_montecarlo(mod, mmvn, data, nminibatch, avegrad,
                                  ave_nuis_grad, &ave_lprior, &avemigll);
     
-    /* TEMPORARY: compare taylor and monte carlo for debugging */
-    
-    /* { */
-    /*   Vector *avegrad_mc = vec_new(avegrad->size); */
-    /*   /\*      Vector *ave_nuis_grad_mc = vec_new(n_nuisance_params); *\/ */
-    /*   double avell_mc = nj_elbo_montecarlo(mod, mmvn, data, nminibatch, */
-    /*                                 avegrad_mc, NULL, &ave_lprior, &avemigll); */
-    /*   fprintf(stderr, "DEBUG: ELBO MC: %f, Taylor: %f\n", avell_mc, avell); */
-    /*   fprintf(stderr, "DEBUG: Gradient MC:\n"); */
-    /*   vec_print(avegrad_mc, stderr); */
-    /*   fprintf(stderr, "DEBUG: Gradient Taylor:\n"); */
-    /*   vec_print(avegrad, stderr); */
-    /*   /\* fprintf(stderr, "DEBUG: Nuisance Gradient MC:\n"); *\/ */
-    /*   /\* vec_print(ave_nuis_grad_mc, stderr); *\/ */
-    /*   /\* fprintf(stderr, "DEBUG: Nuisance Gradient Taylor:\n"); *\/ */
-    /*   /\* vec_print(ave_nuis_grad, stderr); *\/ */
-    /*   vec_free(avegrad_mc); */
-    /*   /\* vec_free(ave_nuis_grad_mc); *\/ */
-    /*   exit(0); */
-    /* } */
-    
-    
     vec_plus_eq(avegrad, kldgrad);
     vec_plus_eq(avegrad, sparsitygrad);
 
@@ -275,7 +246,6 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn,
       avell *= subsamp_rescale;
 
     /* store parameters if best yet */
-    /* lastelb = elb; */
     elb = avell + ave_lprior - kld + penalty + avemigll;
 
     if (elb > bestelb && (sd->full_grad_now || data->crispr_mod != NULL)) {
@@ -313,11 +283,6 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn,
     t++;
     data->variational_iter = t; /* useful for debugging in other routines */
 
-    /* TEMPORARY: save previous parameters for debugging */
-    /* Vector *old_mu = vec_new(fulld); */
-    /* mmvn_save_mu(mmvn, old_mu); */
-    /* double old_sigmapar = vec_get(sigmapar, 0); /\* assume only one for now *\/ */
-      
     for (j = 0; j < rescaledgrad->size; j++) {   
       double mhatj, vhatj, g = vec_get(rescaledgrad, j);
       
@@ -340,19 +305,6 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn,
     
     vec_copy(m_prev, m);
     vec_copy(v_prev, v);
-
-    /* TEMPORARY: debugging stats */
-    /* double graddot = 0.0, gnorm = 0.0, parnorm = 0.0;; */
-    /* for (j = 0; j < fulld; j++) { */
-    /*   double diff = mmvn_get_mu_el(mmvn, j) - vec_get(old_mu, j); */
-    /*   graddot += diff * vec_get(avegrad, j); */
-    /*   gnorm += vec_get(avegrad, j) * vec_get(avegrad, j); */
-    /*   parnorm += diff * diff; */
-    /* } */
-    /* graddot += vec_get(avegrad, fulld) * (vec_get(sigmapar, 0) - old_sigmapar); */
-    /* double gradcos = graddot / sqrt(gnorm * parnorm + 1e-20); */
-    /* double mu2 = mmvn_mu2(mmvn); */
-    /* mmvn_get_center(center, mmvn); */
 
     /* same thing for nuisance params, if necessary */
     for (j = 0; j < n_nuisance_params; j++) {   
@@ -393,12 +345,6 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn,
       for (j = 0; j < n_nuisance_params; j++)
         fprintf(logf, "%f\t", nj_nuis_param_get(mod, data, j));
 
-      /* TEMPORARY: debugging info */
-      /* fprintf(logf, "%f\t", mu2); */
-      /* for (j = 0; j < center->size; j++) */
-      /*   fprintf(logf, "%f\t", vec_get(center, j)); */
-      /* fprintf(logf, "%f\t%f\t%f", graddot, gradcos, elb - lastelb); */
-      
       fprintf(logf, "\n");
     }
     
