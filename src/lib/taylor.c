@@ -182,12 +182,14 @@ double nj_elbo_taylor(TreeModel *mod, multi_MVN *mmvn, CovarData *data,
                                   NHUTCH_SAMPLES, grad_sigma);
 
     if (isfinite(T)) { /* guard against runaway values */
+      T = fmin(T, 0.0); /* trace should be non-positive */
       if (td->iter == td->warmup) {
         td->T_cache = T; /* initialize on first update */
         vec_copy(td->siggrad_cache, grad_sigma);
       }
       else {
         td->T_cache = (1.0 - td->beta) * td->T_cache + td->beta * T;
+        td->T_cache = fmin(td->T_cache, 0.0);
         for (int j = 0; j < sigdim; j++) {
           double old = vec_get(td->siggrad_cache, j);
           double nw  = vec_get(grad_sigma, j);
@@ -207,7 +209,7 @@ double nj_elbo_taylor(TreeModel *mod, multi_MVN *mmvn, CovarData *data,
   int offset = data->taylor->fulld; 
   for (int j = 0; j < sigdim; j++)
     vec_set(grad, offset + j, vec_get(grad, offset + j)
-                              + 0.5 * vec_get(td->siggrad_cache, j));
+                              + 0.5 * data->lambda * vec_get(td->siggrad_cache, j));
   
   /* free everything and return */
   vec_free(mu);

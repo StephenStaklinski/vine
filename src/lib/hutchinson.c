@@ -130,14 +130,14 @@ double hutch_tr_plus_grad(
     Hfun(Hu, u, userdata);
 
     double hu_norm = vec_norm(Hu);
-    if (!isfinite(hu_norm) || hu_norm > HUTCH_HVP_NORM_CAP)
+    if (!isfinite(hu_norm))
       continue;  /* skip this probe entirely */
 
     /* accumulate trace component: zᵀ H u */
     double tr_k = vec_inner_prod(z, Hu);
     if (!isfinite(tr_k)) continue;
     
-    accum += soft_clip(tr_k, HUTCH_PROBE_CAP);
+    accum += tr_k;
 
     /* If no gradient requested, skip this part */
     if (grad_sigma == NULL)
@@ -186,5 +186,7 @@ double hutch_tr_plus_grad(
   vec_free(tmp);
 
   /* return tr(H S) */
-  return accum / nprobe;
+  double T = accum / nprobe; /* raw estimate */
+  T = soft_clip(T, HUTCH_PROBE_CAP);  /* apply final clipping */
+  return T;
 }
