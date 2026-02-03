@@ -581,13 +581,14 @@ int main(int argc, char *argv[]) {
                          niter_conv, min_iter, 
                          covar_data, logfile);
 
+      fprintf(stderr, "Sampling trees...\n");
+
       if (rejection_sampling == TRUE) 
         trees = nj_var_sample_rejection(nsamples, mmvn, covar_data, mod, logfile);
 
       else /* otherwise just sample directly from approx posterior */
         trees = nj_var_sample(nsamples, mmvn, covar_data, names, NULL);
 
-      fprintf(stderr, "Sampling trees...\n");
       for (i = 0; i < nsamples; i++) {
         TreeNode *t = (TreeNode *)lst_get_ptr(trees, i);
         tr_print(stdout, t, TRUE);
