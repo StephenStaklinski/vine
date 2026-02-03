@@ -59,6 +59,7 @@ typedef struct taylor_data {
 
   /* scheduling */
   double T_cache;
+  double elbo_bias;  /* EMA of (Taylor ELBO - MC ELBO), for debiasing */
   Vector *siggrad_cache;   /* size = nsigma (or full grad layout if you include mu) */
   int iter;    /* current iteration */
   int warmup;  /* number of warmup iterations */

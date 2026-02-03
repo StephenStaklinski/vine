@@ -59,6 +59,7 @@ TaylorData *tay_new(CovarData *data) {
   /* scheduling directives */
   td->iter = 0;
   td->T_cache = 0.0;
+  td->elbo_bias = 0.0;
   td->siggrad_cache = NULL; /* will be allocated later */
   td->warmup = 50; /* number of iterations before updates begin */
   td->period = 30; /* update period */
@@ -898,10 +899,12 @@ double nj_elbo_hybrid(TreeModel *mod, multi_MVN *mmvn, CovarData *data,
      * 3. Cache + smooth MC correction
      * --------------------------------------- */
 
-    /* Δ = E_q[ll] − ll(mu)
+    /* Δ = E_q[ll + migll] − (ll(mu) + migll(mu))
        We store T ≈ 2Δ so that 0.5*T ≈ Δ
+       Including migration here means the caller's separate addition
+       of *migll cancels with the −*migll inside T, leaving E_q[migll].
     */
-    double T = 2.0 * (mc_ll - ll_mu);
+    double T = 2.0 * ((mc_ll + mc_migll) - (ll_mu + *migll));
 
     if (isfinite(T)) {
       T = fmin(T, 0.0); /* should be non-positive */
@@ -918,13 +921,32 @@ double nj_elbo_hybrid(TreeModel *mod, multi_MVN *mmvn, CovarData *data,
       else {
         td->T_cache =
           (1.0 - td->beta) * td->T_cache + td->beta * T;
-        td->T_cache = fmin(td->T_cache, 0.0);
         
         blend_variance_block(td->siggrad_cache,
                              mc_grad,
                              fulld,
                              td->beta);
       }
+    }
+
+    /* on refresh iterations, use MC nuisance gradient (averaged over
+       samples) instead of the single mean-point evaluation */
+    if (nuis_grad != NULL && mc_nuis != NULL)
+      vec_copy(nuis_grad, mc_nuis);
+
+    /* Update ELBO bias correction.  The Taylor ELBO (ll_mu + 0.5*T)
+       and MC ELBO (mc_ll + mc_migll) estimate the same quantity but
+       differ due to higher-order terms and clamping.  Track the
+       discrepancy so we can debias the Taylor ELBO for parameter
+       selection by the caller. */
+    double taylor_elbo = ll_mu + 0.5 * td->T_cache;
+    double mc_elbo = mc_ll + mc_migll;
+    double bias = taylor_elbo - mc_elbo;
+    if (isfinite(bias)) {
+      if (td->iter == td->warmup)
+        td->elbo_bias = bias;
+      else
+        td->elbo_bias = (1.0 - td->beta) * td->elbo_bias + td->beta * bias;
     }
 
     vec_free(mc_grad);
@@ -941,10 +963,10 @@ double nj_elbo_hybrid(TreeModel *mod, multi_MVN *mmvn, CovarData *data,
     add_cached_variance_grad(grad, td->siggrad_cache, fulld);
 
   /* ---------------------------------------
-   * 5. Final ELBO value
+   * 5. Final ELBO value (debiased)
    * --------------------------------------- */
 
-  double elbo = ll_mu + 0.5 * td->T_cache;
+  double elbo = ll_mu + 0.5 * td->T_cache - td->elbo_bias;
 
   /* ---------------------------------------
    * 6. Cleanup
