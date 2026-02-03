@@ -20,6 +20,7 @@
 #include <upgma.h>
 #include <gradients.h>
 #include <likelihoods.h>
+#include <variational.h>
 #include <hutchinson.h>
 #include <nuisance.h>
 #include <backprop.h>
@@ -763,3 +764,197 @@ void tay_SigmaGradfun(Vector *grad_sigma, Vector *p_lat, Vector *q_lat, void *us
     tay_sigma_grad_mult(grad_sigma, p_lat, q_lat, td->mmvn, td->covar_data);
 }
 
+
+/* below is a hybrid of the full Monte Carlo and full Taylor methods
+ * that uses Monte Carlo only for variance parameters.  It uses the
+ * caching and EMA strategy of the Taylor method to avoid recomputing
+ * the full set of gradients at every step. */
+
+/* Blend only the covariance / variance block of gradients.
+   Assumes:
+     grad_full size = fulld + sigdim
+     siggrad_cache size = sigdim
+*/
+static inline void blend_variance_block(Vector *siggrad_cache,
+                                        Vector *mc_grad,
+                                        int fulld,
+                                        double beta) {
+  int sigdim = siggrad_cache->size;
+
+  for (int j = 0; j < sigdim; j++) {
+    double old = vec_get(siggrad_cache, j);
+    double nw  = vec_get(mc_grad, fulld + j);
+    vec_set(siggrad_cache, j, (1.0 - beta) * old + beta * nw);
+  }
+}
+
+static inline void add_cached_variance_grad(Vector *grad,
+                                            Vector *siggrad_cache,
+                                            int fulld) {
+  int sigdim = siggrad_cache->size;
+
+  for (int j = 0; j < sigdim; j++) {
+    vec_set(grad, fulld + j,
+            vec_get(grad, fulld + j) + vec_get(siggrad_cache, j));
+  }
+}
+
+/* Hybrid ELBO:
+   - Mean gradient from Taylor (log likelihood at mu)
+   - Variance gradient + curvature correction from MC (cached + smoothed)
+*/
+double nj_elbo_hybrid(TreeModel *mod, multi_MVN *mmvn, CovarData *data,
+                      int nminibatch, Vector *grad, Vector *nuis_grad,
+                      double *lprior, double *migll) {
+  TaylorData *td = data->taylor;
+  double ll_mu;
+
+  int fulld  = td->fulld;
+  int sigdim = grad->size - fulld;
+
+  /* ---------------------------------------
+   * 1. Log likelihood and gradient at mean
+   * --------------------------------------- */
+
+  vec_zero(grad);
+
+  Vector *mu = vec_new(fulld);
+  mmvn_save_mu(mmvn, mu);
+
+  ll_mu = nj_compute_model_grad(mod, mmvn,
+                                mu,
+                                NULL,        /* points_std == NULL → no variance grads */
+                                grad,
+                                data,
+                                NULL,
+                                migll);
+
+  if (!isfinite(ll_mu)) {
+    data->no_zero_br = TRUE;
+    ll_mu = nj_compute_model_grad(mod, mmvn,
+                                  mu,
+                                  NULL,
+                                  grad,
+                                  data,
+                                  NULL,
+                                  migll);
+    if (!isfinite(ll_mu))
+      die("Fatal error: log likelihood at mean is not finite\n");
+  }
+
+  /* Prior + nuisance gradient.  Only add the mean block (first fulld
+     elements) here; the sigma block of the prior gradient will come
+     from the MC cache to avoid double-counting. */
+  if (data->treeprior != NULL) {
+    Vector *prior_grad = vec_new(grad->size);
+    *lprior = tp_compute_log_prior(mod, data, prior_grad);
+    for (int j = 0; j < fulld; j++)
+      vec_set(grad, j, vec_get(grad, j) + vec_get(prior_grad, j));
+    vec_free(prior_grad);
+  }
+  else {
+    *lprior = 0.0;
+  }
+
+  if (nuis_grad != NULL) {
+    vec_zero(nuis_grad);
+    nj_update_nuis_grad(mod, data, nuis_grad);
+  }
+
+  /* ---------------------------------------
+   * 2. Decide whether to refresh MC cache
+   * --------------------------------------- */
+
+  int do_refresh =
+      (td->iter >= td->warmup) &&
+      ((td->iter - td->warmup) % td->period == 0);
+
+  if (do_refresh && nj_var_at_floor(mmvn, data))
+    do_refresh = FALSE;
+
+  if (do_refresh) {
+
+    Vector *mc_grad = vec_new(grad->size);
+    Vector *mc_nuis = nuis_grad ? vec_new(nuis_grad->size) : NULL;
+    double mc_lprior = 0.0, mc_migll = 0.0;
+
+    vec_zero(mc_grad);
+    if (mc_nuis) vec_zero(mc_nuis);
+
+    /* This call:
+       - samples x ~ q
+       - computes E_q[log p(y|x)]
+       - computes unbiased gradients wrt ALL params
+    */
+    double mc_ll =
+      nj_elbo_montecarlo(mod, mmvn, data,
+                         nminibatch,
+                         mc_grad,
+                         mc_nuis,
+                         &mc_lprior,
+                         &mc_migll);
+
+    /* ---------------------------------------
+     * 3. Cache + smooth MC correction
+     * --------------------------------------- */
+
+    /* Δ = E_q[ll] − ll(mu)
+       We store T ≈ 2Δ so that 0.5*T ≈ Δ
+    */
+    double T = 2.0 * (mc_ll - ll_mu);
+
+    if (isfinite(T)) {
+      T = fmin(T, 0.0); /* should be non-positive */
+      if (td->iter == td->warmup) {
+        td->T_cache = T;
+
+        if (td->siggrad_cache == NULL)
+          td->siggrad_cache = vec_new(sigdim);
+
+        /* initialize variance gradient cache */
+        for (int j = 0; j < sigdim; j++)
+          vec_set(td->siggrad_cache, j, vec_get(mc_grad, fulld + j));
+      }
+      else {
+        td->T_cache =
+          (1.0 - td->beta) * td->T_cache + td->beta * T;
+        td->T_cache = fmin(td->T_cache, 0.0);
+        
+        blend_variance_block(td->siggrad_cache,
+                             mc_grad,
+                             fulld,
+                             td->beta);
+      }
+    }
+
+    vec_free(mc_grad);
+    if (mc_nuis) vec_free(mc_nuis);
+  }
+
+  td->iter++;
+
+  /* ---------------------------------------
+   * 4. Assemble final gradient
+   * --------------------------------------- */
+
+  if (td->siggrad_cache != NULL)
+    add_cached_variance_grad(grad, td->siggrad_cache, fulld);
+
+  /* ---------------------------------------
+   * 5. Final ELBO value
+   * --------------------------------------- */
+
+  double elbo = ll_mu + 0.5 * td->T_cache;
+
+  /* ---------------------------------------
+   * 6. Cleanup
+   * --------------------------------------- */
+
+  vec_free(mu);
+  if (mod->tree != NULL) {
+    tr_free(mod->tree);
+    mod->tree = NULL;
+  }
+
+  return elbo;
+}

@@ -95,4 +95,8 @@ void tay_Sigmafun(Vector *out, Vector *v, void *userdata);
 void tay_SigmaGradfun(Vector *grad_sigma, Vector *p_lat, Vector *q_lat,
                       void *userdata);
 
+double nj_elbo_hybrid(TreeModel *mod, multi_MVN *mmvn, struct cvdat *data,
+                      int nminibatch, Vector *grad, Vector *nuis_grad,
+                      double *lprior, double *migll);
+
 #endif /* TAYLOR_H */
