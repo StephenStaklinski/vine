@@ -187,7 +187,6 @@ void cpr_renumber_states(CrisprMutTable *M) {
 /* helper function to avoid zeros resulting from combination of
    irreversible model and very short branches */
 #define CPR_PFLOOR 1.0e-200
-#define CPR_T_FLOOR 1.0e-4   /* branch-length floor for irreversible model */
 static inline double mm_get_floor(MarkovMatrix *M, int i, int j) {
   double p = mm_get(M, i, j);
   return p + CPR_PFLOOR; /* note derivative still same as orig */

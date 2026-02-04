@@ -25,6 +25,9 @@ struct NJDerivs;
 #define CPR_SIL_RATE_INIT 0.4
 #define CPR_SIL_RATE_MAX 100.0
 
+/* branch-length floor for irreversible model */
+#define CPR_T_FLOOR 1.0e-4
+
 typedef struct {
   int nsites;
   int ncells;

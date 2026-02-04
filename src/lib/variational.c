@@ -115,9 +115,12 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn,
   }
   t = 0;
 
-  /* set up scheduler; initialized but not currently used in CRISPR mode */
-  int maxlen = data->crispr_mod == NULL ? data->msa->length : 1000;
-  Scheduler *s = sched_new(maxlen, NSUBSAMPLES, 20,
+  /* set up scheduler; for CRISPR mode, start in full mode (no
+     subsampling) but still use adaptive gradient clipping */
+  int maxlen = data->crispr_mod == NULL ?
+    data->msa->length : data->crispr_mod->nsites;
+  int init_subsamp = data->crispr_mod == NULL ? NSUBSAMPLES : maxlen;
+  Scheduler *s = sched_new(maxlen, init_subsamp, 20,
                            learnrate, 10, 50, 30);
   SchedState *st = sched_new_state(s);
   SchedDirectives *sd = smalloc(sizeof(SchedDirectives));
@@ -274,12 +277,10 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn,
     /* we won't do this with nuisance params */
 
     /* update scheduler with norm of gradient and clip if necessary */
-    if (data->crispr_mod == NULL) {
-      sm->grad_norm = vec_norm(rescaledgrad);
-      if (sd->clip_norm > 0 && sm->grad_norm > sd->clip_norm) {
-        vec_scale(rescaledgrad, sd->clip_norm / sm->grad_norm);
-        clipped = TRUE;
-      }
+    sm->grad_norm = vec_norm(rescaledgrad);
+    if (sd->clip_norm > 0 && sm->grad_norm > sd->clip_norm) {
+      vec_scale(rescaledgrad, sd->clip_norm / sm->grad_norm);
+      clipped = TRUE;
     }
 
     /* Adam updates; see Kingma & Ba, arxiv 2014 */

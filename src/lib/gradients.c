@@ -23,6 +23,7 @@
 #include <variational.h>
 #include <geometry.h>
 #include <covariance.h>
+#include <crispr.h>
 #include <phast/dgamma.h>
 
 /* compute the gradient of the log likelihood for a tree model with
@@ -518,11 +519,22 @@ double nj_dL_dx_smartest(Vector *x, Vector *dL_dx, TreeModel *mod,
     vec_plus_eq(dL_dt, migbranchgrad);
   }
 
+  /* Zero out branch gradients for branches clamped at the floor.
+     Under the CRISPR model with no_zero_br, UPGMA branches shorter
+     than CPR_T_FLOOR are clamped by nj_repair_zero_br.  The gradient
+     dL/dt at the floor is non-zero but the branch cannot actually
+     move below the floor, so propagating this gradient back through
+     the UPGMA Jacobian produces phantom signal that biases the
+     optimizer. */
+  if (data->crispr_mod != NULL && data->no_zero_br) {
+    for (i = 0; i < tree->nnodes; i++) {
+      TreeNode *nd = lst_get_ptr(tree->nodes, i);
+      if (nd->parent != NULL && nd->dparent <= CPR_T_FLOOR)
+        vec_set(dL_dt, nd->id, 0.0);
+    }
+  }
+
   /* apply chain rule to get dL/dD gradient (a vector of dim ndist) */
-
-  /* for now, keep old and new versions of this calculation for
-     cross-checking */
-
 
   /* new version using Neighbors structure */
   if (nb != NULL)
