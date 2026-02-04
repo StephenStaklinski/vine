@@ -108,9 +108,11 @@ double nj_elbo_taylor(TreeModel *mod, multi_MVN *mmvn, CovarData *data,
   /* do after calling nj_compute_model_grad so tree is defined */
   assert(mod->tree->nnodes - 1 == td->nbranches);  
 
-  if (!isfinite(ll))
-    die("Fatal error: log likelihood at mean is not finite\n");
-  
+  if (!isfinite(ll)) {
+    vec_free(mu);
+    return ll;  /* let caller handle via zero_likl recovery */
+  }
+
   /* also handle log prior and nuisance gradient if needed */
   if (data->treeprior != NULL) {
     Vector *prior_grad = vec_new(grad->size);
@@ -826,8 +828,10 @@ double nj_elbo_hybrid(TreeModel *mod, multi_MVN *mmvn, CovarData *data,
                                 NULL,
                                 migll);
 
-  if (!isfinite(ll_mu))
-    die("Fatal error: log likelihood at mean is not finite\n");
+  if (!isfinite(ll_mu)) {
+    vec_free(mu);
+    return ll_mu;  /* let caller handle via zero_likl recovery */
+  }
 
   /* Prior + nuisance gradient.  Only add the mean block (first fulld
      elements) here; the sigma block of the prior gradient will come

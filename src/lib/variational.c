@@ -228,12 +228,13 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn,
                              ave_nuis_grad, &ave_lprior, &avemigll);
       /* avell = nj_elbo_taylor(mod, mmvn, data, avegrad, ave_nuis_grad, */
       /*                        &ave_lprior, &avemigll); */
-      if (data->crispr_mod != NULL && data->crispr_mod->zero_likl == TRUE) {
+      if ((data->crispr_mod != NULL && data->crispr_mod->zero_likl == TRUE) ||
+          !isfinite(avell)) {
         fprintf(stderr, "WARNING: Taylor approximation produced invalid likelihood; "
                 "switching to Monte Carlo.\n");
         reenable_taylor_t = t + 10;
         taylor_stash = data->taylor;
-        data->taylor = NULL;        
+        data->taylor = NULL;
       }
     }
     

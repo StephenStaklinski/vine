@@ -21,8 +21,9 @@
 /* forward declarations to avoid circular include with likelihoods.h */
 struct NJDerivs;
 
-/* initialization of silencing rate */
+/* initialization and bounds for silencing rate */
 #define CPR_SIL_RATE_INIT 0.4
+#define CPR_SIL_RATE_MAX 100.0
 
 typedef struct {
   int nsites;

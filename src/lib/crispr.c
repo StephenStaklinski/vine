@@ -416,7 +416,7 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
       int rstate = lst_get_int(par_states, i);
       total_prob += root_eqfreqs[rstate] * pL[rstate][cprmod->mod->tree->id];
     }
-    if (total_prob <= 0.0) 
+    if (!(total_prob > 0.0))  /* catches zero, negative, and NaN */
       total_prob = CPR_PFLOOR;
 
     ll += (log(total_prob) + vec_get(lscale, cprmod->mod->tree->id));
@@ -557,10 +557,9 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
           + vec_get(lscale, n->id) - log(base_prob);
         /* note division by base_prob because we need deriv of log P */
 
-        /* avoid overflow */
-        if (expon > 700.0) expon = 700.0;
-        if (expon < -745.0)
-          expon = -745.0;
+        /* avoid overflow; note !isfinite also catches NaN */
+        if (!isfinite(expon) || expon > 700.0) expon = 700.0;
+        if (expon < -745.0) expon = -745.0;
           
         if (n != cprmod->mod->tree->rchild) { /* skip this for right branch from root because unrooted */
           /* calculate derivative analytically */
@@ -615,9 +614,9 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
           * mat_get(grad_mat, 0, cstate);
       }
 
-      /* rescale */
+      /* rescale; note !isfinite also catches NaN */
       expon = -log(total_prob);
-      if (expon > 700.0) expon = 700.0;
+      if (!isfinite(expon) || expon > 700.0) expon = 700.0;
       if (expon < -745.0) expon = -745.0;
       this_deriv_leading_t *= exp(expon);
       derivs->deriv_leading_t += this_deriv_leading_t;

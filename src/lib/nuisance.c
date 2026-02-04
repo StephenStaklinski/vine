@@ -299,8 +299,10 @@ void nj_nuis_param_pluseq(TreeModel *mod, CovarData *data, int idx, double inc) 
   if (data->crispr_mod != NULL) {
     if (idx == 0) {
       data->crispr_mod->sil_rate += inc;
-      if (data->crispr_mod->sil_rate < 0) 
+      if (data->crispr_mod->sil_rate < 0)
         data->crispr_mod->sil_rate = 0;
+      else if (data->crispr_mod->sil_rate > CPR_SIL_RATE_MAX)
+        data->crispr_mod->sil_rate = CPR_SIL_RATE_MAX;
       return;
     }
     if (idx == 1) {
