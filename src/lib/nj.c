@@ -17,6 +17,7 @@
 #include <assert.h>
 #include <float.h>
 #include <nj.h>
+#include <crispr.h>
 #include <likelihoods.h>
 #include <backprop.h>
 #include <heap.h>
@@ -690,8 +691,8 @@ void nj_update_diam_leaves(Matrix *D, CovarData *data) {
 void nj_repair_zero_br(TreeNode *t) {
   for (int nodeidx = 0; nodeidx < lst_size(t->nodes); nodeidx++) {
     TreeNode *n = lst_get_ptr(t->nodes, nodeidx);
-    if (n->parent != NULL && n->dparent < 1e-4)
-      n->dparent = 1e-4;
+    if (n->parent != NULL && n->dparent < CPR_T_FLOOR)
+      n->dparent = CPR_T_FLOOR;
   }
 }
 
