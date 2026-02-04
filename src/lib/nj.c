@@ -690,8 +690,8 @@ void nj_update_diam_leaves(Matrix *D, CovarData *data) {
 void nj_repair_zero_br(TreeNode *t) {
   for (int nodeidx = 0; nodeidx < lst_size(t->nodes); nodeidx++) {
     TreeNode *n = lst_get_ptr(t->nodes, nodeidx);
-    if (n->parent != NULL && n->dparent <= 0)
-      n->dparent = 1e-3;
+    if (n->parent != NULL && n->dparent < 1e-4)
+      n->dparent = 1e-4;
   }
 }
 

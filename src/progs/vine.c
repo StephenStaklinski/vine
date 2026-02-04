@@ -478,6 +478,8 @@ int main(int argc, char *argv[]) {
                                  hyperbolic, negcurvature, ultrametric,
                                  radial_flow, planar_flow, tprior, migtable,
                                  use_taylor);
+  if (is_crispr)
+    covar_data->no_zero_br = TRUE;
   if (primary_state != NULL)
     mig_set_primary_state(migtable, primary_state);
 

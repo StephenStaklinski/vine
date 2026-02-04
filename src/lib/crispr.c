@@ -186,7 +186,8 @@ void cpr_renumber_states(CrisprMutTable *M) {
 
 /* helper function to avoid zeros resulting from combination of
    irreversible model and very short branches */
-#define CPR_PFLOOR 1.0e-300
+#define CPR_PFLOOR 1.0e-200
+#define CPR_T_FLOOR 1.0e-4   /* branch-length floor for irreversible model */
 static inline double mm_get_floor(MarkovMatrix *M, int i, int j) {
   double p = mm_get(M, i, j);
   return p + CPR_PFLOOR; /* note derivative still same as orig */
@@ -708,8 +709,9 @@ void cpr_set_subst_matrices(TreeModel *mod, double silent_rate,
 
 /* set P = exp(Qt) matrix for branch length t, using parameterization
    of Mai, Chu, and Raphael, doi:10.1101/2024.03.05.583638 */  
-void cpr_set_branch_matrix(MarkovMatrix *P, double t, double silent_rate, Vector *mutrates) {  
+void cpr_set_branch_matrix(MarkovMatrix *P, double t, double silent_rate, Vector *mutrates) {
   int j, silst = P->size - 1; /* silent state is the last one */
+  if (t < CPR_T_FLOOR) t = CPR_T_FLOOR;
   double exp_t_sil = exp(-t * silent_rate),
     one_min_exp_t_sil = 1 - exp_t_sil,
     exp_t_sil_one_min_exp_t = exp_t_sil * (1 - exp(-t));
@@ -744,6 +746,7 @@ void cpr_set_branch_matrix(MarkovMatrix *P, double t, double silent_rate, Vector
    to branch length */
 void cpr_branch_grad(Matrix *grad, double t, double silent_rate, Vector *mutrates) {
   int j, silst = grad->nrows - 1;
+  if (t < CPR_T_FLOOR) t = CPR_T_FLOOR;
   double em1 = expm1(-t);          /* = exp(-t) - 1, accurate for small t */
   double es = exp(-t * silent_rate);
   double A  = (silent_rate * es * em1 + exp(-t * (1+silent_rate)));
@@ -777,6 +780,7 @@ void cpr_branch_grad(Matrix *grad, double t, double silent_rate, Vector *mutrate
    to the silencing rate */
 void cpr_silent_rate_grad(Matrix *grad, double t, double silent_rate, Vector *mutrates) {
   int j, silst = grad->nrows - 1;
+  if (t < CPR_T_FLOOR) t = CPR_T_FLOOR;
   double Es = -t * exp(-silent_rate * t);
   double E1 = exp(-t);
   double A = Es * (1.0-E1);

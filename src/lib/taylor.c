@@ -108,12 +108,8 @@ double nj_elbo_taylor(TreeModel *mod, multi_MVN *mmvn, CovarData *data,
   /* do after calling nj_compute_model_grad so tree is defined */
   assert(mod->tree->nnodes - 1 == td->nbranches);  
 
-  if (!isfinite(ll)) { /* this can happen in the CRISPR case */
-    data->no_zero_br = TRUE; /* prohibit zero branch lengths and try again */
-    ll = nj_compute_model_grad(mod, mmvn, mu, NULL, grad, data, NULL, migll);
-    if (!isfinite(ll))
-      die("Fatal error: log likelihood at mean is not finite even with no zero branch lengths\n");
-  }
+  if (!isfinite(ll))
+    die("Fatal error: log likelihood at mean is not finite\n");
   
   /* also handle log prior and nuisance gradient if needed */
   if (data->treeprior != NULL) {
@@ -830,18 +826,8 @@ double nj_elbo_hybrid(TreeModel *mod, multi_MVN *mmvn, CovarData *data,
                                 NULL,
                                 migll);
 
-  if (!isfinite(ll_mu)) {
-    data->no_zero_br = TRUE;
-    ll_mu = nj_compute_model_grad(mod, mmvn,
-                                  mu,
-                                  NULL,
-                                  grad,
-                                  data,
-                                  NULL,
-                                  migll);
-    if (!isfinite(ll_mu))
-      die("Fatal error: log likelihood at mean is not finite\n");
-  }
+  if (!isfinite(ll_mu))
+    die("Fatal error: log likelihood at mean is not finite\n");
 
   /* Prior + nuisance gradient.  Only add the mean block (first fulld
      elements) here; the sigma block of the prior gradient will come
