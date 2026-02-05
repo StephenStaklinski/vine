@@ -471,7 +471,7 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
               sstate = lst_get_int(sib_states, k);
               double b = pL[sstate][sibling->id];
               if (b > 0.0)
-                tmp[pstate] += a * b * mm_get(sib_subst_mat, pstate, sstate);
+                tmp[pstate] += a * b * mm_get_floor(sib_subst_mat, pstate, sstate);
             }
           }
 
