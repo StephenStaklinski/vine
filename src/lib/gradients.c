@@ -26,11 +26,6 @@
 #include <crispr.h>
 #include <phast/dgamma.h>
 
-/* Statistics for branches at floor (for diagnostics) */
-static int floor_stats_total_calls = 0;
-static int floor_stats_total_branches_at_floor = 0;
-static int floor_stats_total_branches_checked = 0;
-
 /* compute the gradient of the log likelihood for a tree model with
    respect to the free parameters of the MVN averaging distribution,
    starting from a given MVN sample (points). Returns log likelihood
@@ -532,38 +527,10 @@ double nj_dL_dx_smartest(Vector *x, Vector *dL_dx, TreeModel *mod,
      the UPGMA Jacobian produces phantom signal that biases the
      optimizer. */
   if (data->crispr_mod != NULL && data->no_zero_br) {
-    int branches_at_floor = 0;
-    int branches_zeroed = 0;
-    int branches_checked = 0;
-
-    /* Debug: confirm this block is entered on first call */
-    if (floor_stats_total_calls == 0)
-      fprintf(stderr, "[gradient] CRISPR floor check enabled (CPR_T_FLOOR=%.2e)\n", CPR_T_FLOOR);
-
     for (i = 0; i < tree->nnodes; i++) {
       TreeNode *nd = lst_get_ptr(tree->nodes, i);
-      if (nd->parent != NULL) {
-        branches_checked++;
-        if (nd->dparent < CPR_T_FLOOR) {  /* changed from <= to < for zeroing */
-          vec_set(dL_dt, nd->id, 0.0);
-          branches_zeroed++;
-        }
-        if (nd->dparent <= CPR_T_FLOOR) {  /* count branches at or below floor */
-          branches_at_floor++;
-        }
-      }
-    }
-
-    floor_stats_total_calls++;
-    floor_stats_total_branches_at_floor += branches_at_floor;
-    floor_stats_total_branches_checked += branches_checked;
-
-    /* Log every 100 calls to avoid flooding stderr */
-    if (floor_stats_total_calls % 100 == 0) {
-      fprintf(stderr, "[gradient] iter %d: %d at floor, %d zeroed, of %d branches (cumulative: %d/%d = %.2f%%)\n",
-              floor_stats_total_calls, branches_at_floor, branches_zeroed, branches_checked,
-              floor_stats_total_branches_at_floor, floor_stats_total_branches_checked,
-              100.0 * floor_stats_total_branches_at_floor / (floor_stats_total_branches_checked > 0 ? floor_stats_total_branches_checked : 1));
+      if (nd->parent != NULL && nd->dparent < CPR_T_FLOOR)
+        vec_set(dL_dt, nd->id, 0.0);
     }
   }
 
@@ -910,23 +877,4 @@ void nj_dr_dalpha_gamma(Vector *dr_dalpha, const TreeModel *mod) {
   
   sfree(r_plus);
   sfree(r_minus);
-}
-
-/* Print summary statistics for branches at floor */
-void nj_print_floor_stats(void) {
-  if (floor_stats_total_calls > 0) {
-    double pct = 100.0 * floor_stats_total_branches_at_floor /
-                 (floor_stats_total_branches_checked > 0 ? floor_stats_total_branches_checked : 1);
-    fprintf(stderr, "\n[floor stats summary] Total gradient calls: %d\n", floor_stats_total_calls);
-    fprintf(stderr, "[floor stats summary] Branches at floor: %d / %d (%.2f%%)\n",
-            floor_stats_total_branches_at_floor, floor_stats_total_branches_checked, pct);
-    fprintf(stderr, "[floor stats summary] Average per call: %.2f branches at floor out of %d\n",
-            (double)floor_stats_total_branches_at_floor / floor_stats_total_calls,
-            floor_stats_total_branches_checked / floor_stats_total_calls);
-  }
-
-  /* Reset for next run */
-  floor_stats_total_calls = 0;
-  floor_stats_total_branches_at_floor = 0;
-  floor_stats_total_branches_checked = 0;
 }

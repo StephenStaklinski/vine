@@ -56,6 +56,4 @@ double nj_dL_dx_smartest(Vector *x, Vector *dL_dx, TreeModel *mod,
 
 void nj_dr_dalpha_gamma(Vector *dr_dalpha, const TreeModel *mod);
 
-void nj_print_floor_stats(void);
-
 #endif

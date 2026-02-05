@@ -388,10 +388,6 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn,
 
   fprintf(stderr, "Converged in %d iterations; ELBO=%.2f ...\n", t, bestelb);
 
-  /* Print floor statistics summary for CRISPR mode */
-  if (data->crispr_mod != NULL)
-    nj_print_floor_stats();
-
   vec_free(avegrad); vec_free(rescaledgrad); vec_free(kldgrad);
   vec_free(sparsitygrad); vec_free(m);
   vec_free(m_prev); vec_free(v); vec_free(v_prev); vec_free(best_mu); vec_free(best_sigmapar);
