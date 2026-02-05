@@ -533,14 +533,22 @@ double nj_dL_dx_smartest(Vector *x, Vector *dL_dx, TreeModel *mod,
      optimizer. */
   if (data->crispr_mod != NULL && data->no_zero_br) {
     int branches_at_floor = 0;
+    int branches_zeroed = 0;
     int branches_checked = 0;
+
+    /* Debug: confirm this block is entered on first call */
+    if (floor_stats_total_calls == 0)
+      fprintf(stderr, "[gradient] CRISPR floor check enabled (CPR_T_FLOOR=%.2e)\n", CPR_T_FLOOR);
 
     for (i = 0; i < tree->nnodes; i++) {
       TreeNode *nd = lst_get_ptr(tree->nodes, i);
       if (nd->parent != NULL) {
         branches_checked++;
-        if (nd->dparent < CPR_T_FLOOR) {  /* changed from <= to < */
+        if (nd->dparent < CPR_T_FLOOR) {  /* changed from <= to < for zeroing */
           vec_set(dL_dt, nd->id, 0.0);
+          branches_zeroed++;
+        }
+        if (nd->dparent <= CPR_T_FLOOR) {  /* count branches at or below floor */
           branches_at_floor++;
         }
       }
@@ -552,8 +560,8 @@ double nj_dL_dx_smartest(Vector *x, Vector *dL_dx, TreeModel *mod,
 
     /* Log every 100 calls to avoid flooding stderr */
     if (floor_stats_total_calls % 100 == 0) {
-      fprintf(stderr, "[gradient] iter %d: %d/%d branches at floor (cumulative: %d/%d = %.2f%%)\n",
-              floor_stats_total_calls, branches_at_floor, branches_checked,
+      fprintf(stderr, "[gradient] iter %d: %d at floor, %d zeroed, of %d branches (cumulative: %d/%d = %.2f%%)\n",
+              floor_stats_total_calls, branches_at_floor, branches_zeroed, branches_checked,
               floor_stats_total_branches_at_floor, floor_stats_total_branches_checked,
               100.0 * floor_stats_total_branches_at_floor / (floor_stats_total_branches_checked > 0 ? floor_stats_total_branches_checked : 1));
     }
