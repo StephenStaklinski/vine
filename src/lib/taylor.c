@@ -258,10 +258,9 @@ void tr_incr_branch_lengths(TreeNode *root, Vector *bl, double scale) {
   assert(root->nnodes - 1 == bl->size);
   for (int i = 0; i < bl->size; i++) {
     TreeNode *n = lst_get_ptr(root->nodes, i);
-    n->dparent += (scale * vec_get(bl, i));
     double raw = n->dparent + scale * vec_get(bl, i);
     /* smooth floor instead of hard clamp */
-    n->dparent = smooth_floor(raw, 1.0e-6);
+    n->dparent = smooth_floor(raw, CPR_T_FLOOR);
   }
 }
 

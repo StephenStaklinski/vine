@@ -238,6 +238,8 @@ void nj_update_nuis_params(Vector *stored_vals, TreeModel *mod, CovarData *data)
   if (data->crispr_mod != NULL) {
     data->crispr_mod->sil_rate = vec_get(stored_vals, idx++);
     data->crispr_mod->leading_t = vec_get(stored_vals, idx++);
+    if (data->crispr_mod->leading_t < CPR_T_FLOOR)
+      data->crispr_mod->leading_t = CPR_T_FLOOR;
   }
   else if (mod->subst_mod == HKY85) {
     data->hky_kappa = vec_get(stored_vals, idx++);
@@ -307,8 +309,8 @@ void nj_nuis_param_pluseq(TreeModel *mod, CovarData *data, int idx, double inc) 
     }
     if (idx == 1) {
       data->crispr_mod->leading_t += inc;
-      if (data->crispr_mod->leading_t < 0) 
-        data->crispr_mod->leading_t = 0;
+      if (data->crispr_mod->leading_t < CPR_T_FLOOR)
+        data->crispr_mod->leading_t = CPR_T_FLOOR;
       return;
     }
     idx -= 2; /* subtract for below */
