@@ -300,9 +300,8 @@ void tay_HVP(Vector *out, Vector *v, void *dat)
   double eps_eff = DERIV_EPS;
   if (maxabs > 1.0) eps_eff /= maxabs;     /* keep max perturbation ~ DERIV_EPS */
 
-  /* avoid hitting the branch-length floor clamp (1e-6).
+  /* avoid hitting the branch-length floor clamp.
      If any component would push b_i below the floor, shrink eps. */
-  const double bl_floor = 1e-6;
   const double safety   = 0.5;   /* stay away from the kink */
 
   /* Backtrack eps to avoid clamp-triggering perturbations */
@@ -314,7 +313,7 @@ void tay_HVP(Vector *out, Vector *v, void *dat)
       if (vi < 0.0) {
         double bi = vec_get(origbl, i);
         double newb = bi + eps_eff * vi;
-        if (newb <= bl_floor) {
+        if (newb <= CPR_T_FLOOR) {
           would_clamp = 1;
           break;
         }

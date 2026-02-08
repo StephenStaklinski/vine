@@ -529,8 +529,12 @@ double nj_dL_dx_smartest(Vector *x, Vector *dL_dx, TreeModel *mod,
   if (data->crispr_mod != NULL && data->no_zero_br) {
     for (i = 0; i < tree->nnodes; i++) {
       TreeNode *nd = lst_get_ptr(tree->nodes, i);
-      if (nd->parent != NULL && nd->dparent < CPR_T_FLOOR)
-        vec_set(dL_dt, nd->id, 0.0);
+      if (nd->parent == NULL) continue;
+      if (nd->dparent <= CPR_T_FLOOR) {
+        double g = vec_get(dL_dt, nd->id);
+        if (g < 0.0)
+          vec_set(dL_dt, nd->id, 0.0);
+      }
     }
   }
 

@@ -744,7 +744,11 @@ void cpr_set_branch_matrix(MarkovMatrix *P, double t, double silent_rate, Vector
    to branch length */
 void cpr_branch_grad(Matrix *grad, double t, double silent_rate, Vector *mutrates) {
   int j, silst = grad->nrows - 1;
-  if (t < CPR_T_FLOOR) t = CPR_T_FLOOR;
+  if (t < CPR_T_FLOOR) {
+    mat_zero(grad);
+    return;
+  }
+  
   double em1 = expm1(-t);          /* = exp(-t) - 1, accurate for small t */
   double es = exp(-t * silent_rate);
   double A  = (silent_rate * es * em1 + exp(-t * (1+silent_rate)));
