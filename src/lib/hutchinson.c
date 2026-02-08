@@ -155,25 +155,24 @@ double hutch_tr_plus_grad(
     JTfun(p_lat, Hz, userdata);
 
     /* accumulate bilinear Σ-gradient: p_latᵀ (∂Σ) q_lat */
-    /* compute scaling induced by clipping */
-    double t = tanh(tr_k / HUTCH_PROBE_CAP);
-    double grad_scale = 1.0 - t * t; /* sech^2(tr_k/cap) */
-
     vec_zero(g_k);
 
     /* g_k gets only this probe's contribution */
     SigmaGradFun(g_k, p_lat, q_lat, userdata);
 
-    /* apply any per-probe scaling */
-    vec_scale(g_k, grad_scale);
-
-    /* accumulate */
+    /* accumulate raw gradient (scaling applied after averaging) */
     vec_plus_eq(grad_sigma, g_k);
   }
 
-  /* Scale gradient by 1/nprobe */
+  /* Compute raw trace estimate */
+  double T_raw = accum / nprobe;
+
+  /* Scale gradient by 1/nprobe and apply soft_clip derivative */
   if (grad_sigma != NULL) {
-    vec_scale(grad_sigma, 1.0 / nprobe);
+    /* d/dσ soft_clip(T_raw) = sech^2(T_raw/cap) * d(T_raw)/dσ */
+    double t = tanh(T_raw / HUTCH_PROBE_CAP);
+    double grad_scale = (1.0 - t * t) / nprobe; /* sech^2 * 1/nprobe */
+    vec_scale(grad_sigma, grad_scale);
     vec_free(g_k);
   }
 
@@ -185,8 +184,6 @@ double hutch_tr_plus_grad(
   vec_free(p_lat);
   vec_free(tmp);
 
-  /* return tr(H S) */
-  double T = accum / nprobe; /* raw estimate */
-  T = soft_clip(T, HUTCH_PROBE_CAP);  /* apply final clipping */
-  return T;
+  /* return tr(H S) with soft clipping */
+  return soft_clip(T_raw, HUTCH_PROBE_CAP);
 }
