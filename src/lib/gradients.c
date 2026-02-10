@@ -525,8 +525,10 @@ double nj_dL_dx_smartest(Vector *x, Vector *dL_dx, TreeModel *mod,
      dL/dt at the floor is non-zero but the branch cannot actually
      move below the floor, so propagating this gradient back through
      the UPGMA Jacobian produces phantom signal that biases the
-     optimizer. */
-  if (data->crispr_mod != NULL && data->no_zero_br) {
+     optimizer.
+     Set NO_FLOOR_ZERO=1 to disable this zeroing for testing. */
+  if (data->crispr_mod != NULL && data->no_zero_br
+      && getenv("NO_FLOOR_ZERO") == NULL) {
     for (i = 0; i < tree->nnodes; i++) {
       TreeNode *nd = lst_get_ptr(tree->nodes, i);
       if (nd->parent == NULL) continue;
