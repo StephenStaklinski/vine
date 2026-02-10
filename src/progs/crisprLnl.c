@@ -2,7 +2,7 @@
  * crisprLnl: evaluate CRISPR log likelihood at a fixed tree and
  * parameters from LAML, for comparison with LAML's reported likelihood.
  *
- * Usage: crisprLnl <mutation_table.tgv> <tree.nwk> <laml_params.txt>
+ * Usage: crisprLnl <mutation_table.tsv> <tree.nwk> <laml_params.txt>
  *
  * The LAML params file should have lines of the form:
  *   Silencing rate: <value>
@@ -97,7 +97,7 @@ int main(int argc, char *argv[]) {
 
   if (argc != 4) {
     fprintf(stderr,
-            "Usage: crisprLnl <mutation_table.tgv> <tree.nwk> <laml_params.txt>\n");
+            "Usage: crisprLnl <mutation_table.tsv> <tree.nwk> <laml_params.txt>\n");
     exit(1);
   }
 
@@ -105,10 +105,10 @@ int main(int argc, char *argv[]) {
   if (parse_laml_params(argv[3], &sil_rate, &mut_rate, &neg_llh) != 0)
     exit(1);
 
-  fprintf(stderr, "LAML parameters:\n");
-  fprintf(stderr, "  Silencing rate: %.10f\n", sil_rate);
-  fprintf(stderr, "  Mutation rate:  %.10f\n", mut_rate);
-  fprintf(stderr, "  Negative-llh:   %.10f\n", neg_llh);
+  /* fprintf(stderr, "LAML parameters:\n"); */
+  /* fprintf(stderr, "  Silencing rate: %.10f\n", sil_rate); */
+  /* fprintf(stderr, "  Mutation rate:  %.10f\n", mut_rate); */
+  /* fprintf(stderr, "  Negative-llh:   %.10f\n", neg_llh); */
 
   /* read mutation table */
   FILE *F = phast_fopen(argv[1], "r");
