@@ -258,7 +258,7 @@ void tr_incr_branch_lengths(TreeNode *root, Vector *bl, double scale) {
     TreeNode *n = lst_get_ptr(root->nodes, i);
     double raw = n->dparent + scale * vec_get(bl, i);
     /* smooth floor instead of hard clamp */
-    n->dparent = smooth_floor(raw, CPR_T_FLOOR);
+    n->dparent = smooth_floor(raw, 0.0);
   }
 }
 
@@ -313,7 +313,7 @@ void tay_HVP(Vector *out, Vector *v, void *dat)
       if (vi < 0.0) {
         double bi = vec_get(origbl, i);
         double newb = bi + eps_eff * vi;
-        if (newb <= CPR_T_FLOOR) {
+        if (newb <= 0.0) {
           would_clamp = 1;
           break;
         }
