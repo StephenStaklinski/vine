@@ -2,8 +2,9 @@
 
 add_executable(vine vine.c)
 add_executable(evalTrees evalTrees.c)
+add_executable(crisprLnl crisprLnl.c)
 
-foreach(tgt vine evalTrees)
+foreach(tgt vine evalTrees crisprLnl)
     target_link_libraries(${tgt} PRIVATE vine_core)
 endforeach()
 
@@ -20,5 +21,6 @@ target_compile_definitions(vine PRIVATE VINE_VERSION="${VINE_VERSION}")
 install(TARGETS
   vine
   evalTrees
+  crisprLnl
   RUNTIME DESTINATION bin
 )
