@@ -512,32 +512,37 @@ double nj_dL_dx_smartest(Vector *x, Vector *dL_dx, TreeModel *mod,
                              code to deal with it */
     return ll_base;
 
+  /* optional numerical check of nuisance gradients (set CHECK_NUIS=1) */
+  if (data->crispr_mod != NULL && getenv("CHECK_NUIS") != NULL) {
+    double ll_plus, ll_minus, eps = DERIV_EPS, orig;
+    CrisprMutModel *cm = data->crispr_mod;
+    /* silencing rate — centered difference */
+    orig = cm->sil_rate;
+    cm->sil_rate = orig + eps;
+    ll_plus = cpr_compute_log_likelihood(cm, NULL);
+    cm->sil_rate = orig - eps;
+    ll_minus = cpr_compute_log_likelihood(cm, NULL);
+    cm->sil_rate = orig;
+    cpr_compute_log_likelihood(cm, NULL);
+    fprintf(stderr, "[nuis] sil_rate: anal=%.6f num=%.6f\n",
+            cm->deriv_sil, (ll_plus - ll_minus) / (2*eps));
+    /* leading branch */
+    orig = cm->leading_t;
+    cm->leading_t = orig + eps;
+    ll_plus = cpr_compute_log_likelihood(cm, NULL);
+    cm->leading_t = orig - eps;
+    ll_minus = cpr_compute_log_likelihood(cm, NULL);
+    cm->leading_t = orig;
+    cpr_compute_log_likelihood(cm, NULL);
+    fprintf(stderr, "[nuis] leading_t: anal=%.6f num=%.6f\n",
+            cm->deriv_leading_t, (ll_plus - ll_minus) / (2*eps));
+  }
+
   /* also get migration log likelihood if needed */
   if (data->migtable != NULL) {
     *migll = mig_compute_log_likelihood(mod, data->migtable, data->crispr_mod,
                                         migbranchgrad);
     vec_plus_eq(dL_dt, migbranchgrad);
-  }
-
-  /* Zero out branch gradients for branches clamped at the floor.
-     Under the CRISPR model with no_zero_br, UPGMA branches shorter
-     than CPR_T_FLOOR are clamped by nj_repair_zero_br.  The gradient
-     dL/dt at the floor is non-zero but the branch cannot actually
-     move below the floor, so propagating this gradient back through
-     the UPGMA Jacobian produces phantom signal that biases the
-     optimizer.
-     Set NO_FLOOR_ZERO=1 to disable this zeroing for testing. */
-  if (data->crispr_mod != NULL && data->no_zero_br
-      && getenv("NO_FLOOR_ZERO") == NULL) {
-    for (i = 0; i < tree->nnodes; i++) {
-      TreeNode *nd = lst_get_ptr(tree->nodes, i);
-      if (nd->parent == NULL) continue;
-      if (nd->dparent <= CPR_T_FLOOR) {
-        double g = vec_get(dL_dt, nd->id);
-        if (g < 0.0)
-          vec_set(dL_dt, nd->id, 0.0);
-      }
-    }
   }
 
   /* apply chain rule to get dL/dD gradient (a vector of dim ndist) */

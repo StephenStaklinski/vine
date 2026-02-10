@@ -576,31 +576,32 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
               deriv += tmp[pstate] * pLbar[pstate][par->id] *
                        pL[cstate][n->id] * mat_get(grad_mat, pstate, cstate);
             }
-          }       
+          }
           /* adjust for all relevant scale terms */
           deriv *= exp(expon);
           assert(isfinite(deriv));
           vec_set(derivs->branchgrad, n->id,
             vec_get(derivs->branchgrad, n->id) + deriv);
-        
-          /* now do the same for the derivative wrt the silent
-             rate; has to be aggregated across branches */
-          this_deriv_sil = 0;
-          cpr_silent_rate_grad(grad_mat, n->dparent, cprmod->sil_rate,
-                               lst_get_ptr(cprmod->sitewise_mutrates, site));
-          for (i = 0; i < lst_size(par_states); i++) {
-            pstate = lst_get_int(par_states, i);
-            for (j = 0; j < lst_size(child_states); j++) {
-              cstate = lst_get_int(child_states, j);
-              this_deriv_sil +=  tmp[pstate] * pLbar[pstate][par->id] * pL[cstate][n->id] *
-                mat_get(grad_mat, pstate, cstate);
-            }
-          }
-
-          /* adjust for all relevant scale terms */
-          this_deriv_sil *= exp(expon);
-          derivs->deriv_sil += this_deriv_sil;
         } /* end skip right branch case */
+
+        /* derivative wrt silent rate: aggregated across ALL branches
+           including the right child of root (unlike branch lengths,
+           the silencing rate is a global parameter affecting every branch) */
+        this_deriv_sil = 0;
+        cpr_silent_rate_grad(grad_mat, n->dparent, cprmod->sil_rate,
+                             lst_get_ptr(cprmod->sitewise_mutrates, site));
+        for (i = 0; i < lst_size(par_states); i++) {
+          pstate = lst_get_int(par_states, i);
+          for (j = 0; j < lst_size(child_states); j++) {
+            cstate = lst_get_int(child_states, j);
+            this_deriv_sil +=  tmp[pstate] * pLbar[pstate][par->id] * pL[cstate][n->id] *
+              mat_get(grad_mat, pstate, cstate);
+          }
+        }
+
+        /* adjust for all relevant scale terms */
+        this_deriv_sil *= exp(expon);
+        derivs->deriv_sil += this_deriv_sil;
       } /* end node loop */
 
       /* also compute gradient for leading branch */
@@ -631,8 +632,8 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
           * mat_get(grad_mat, 0, cstate);
       }
       this_deriv_sil *= exp(expon);
-      derivs->deriv_sil += this_deriv_sil;        
-      
+      derivs->deriv_sil += this_deriv_sil;
+
       mat_free(grad_mat);
     }
   }

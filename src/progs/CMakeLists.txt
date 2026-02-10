@@ -6,6 +6,12 @@ add_executable(crisprLnl crisprLnl.c)
 
 foreach(tgt vine evalTrees crisprLnl)
     target_link_libraries(${tgt} PRIVATE vine_core)
+    if(APPLE)
+        add_custom_command(TARGET ${tgt} POST_BUILD
+            COMMAND codesign -s - "$<TARGET_FILE:${tgt}>"
+            COMMENT "Ad-hoc code signing ${tgt}"
+        )
+    endif()
 endforeach()
 
 # Read version file and strip whitespace
