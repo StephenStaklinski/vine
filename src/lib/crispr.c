@@ -519,6 +519,7 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
 
       /* now compute branchwise derivatives in a final pass */
       grad_mat = mat_new(nstates, nstates);
+      mat_zero(grad_mat);
       for (nodeidx = 0; nodeidx < lst_size(cprmod->mod->tree->nodes); nodeidx++) {
         TreeNode *par;
         double base_prob = total_prob, deriv;

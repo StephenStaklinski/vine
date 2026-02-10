@@ -137,6 +137,12 @@ int main(int argc, char *argv[]) {
   cprmod->sil_rate = sil_rate;
   cprmod->leading_t = leading_t;
 
+  /* DIAGNOSTIC: test with delta prior on unedited state */
+  if (getenv("NO_LEADING") != NULL) {
+    fprintf(stderr, "[diag] overriding leading_t=%.6g with 1e-8\n", leading_t);
+    cprmod->leading_t = 1e-8;
+  }
+
   cpr_prep_model(cprmod);
   cpr_update_model(cprmod);
 
