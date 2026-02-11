@@ -100,7 +100,7 @@ int main(int argc, char *argv[]) {
   enum crispr_mutrates_type crispr_muttype = UNIF;
   TreePrior *tprior = NULL;
   enum tree_prior_type tp_type = NONE;
-  unsigned int relclock = FALSE;
+  unsigned int relclock = FALSE, had_dups = FALSE;
   MigTable *migtable = NULL;
   List *migstates_lst = NULL;
   char *primary_state = NULL;
@@ -397,6 +397,14 @@ int main(int argc, char *argv[]) {
     if (is_crispr) { /* CRISPR mutation table */
       crispr_muts = cpr_read_table(infile);
       ntips = crispr_muts->ncells;
+      cpr_deduplicate(crispr_muts); /* collapse identical genotypes; modifies
+                                       crispr_muts in place */
+      if (crispr_muts->ncells < ntips) {
+        had_dups = TRUE;
+        fprintf(stderr, "Collapsed %d duplicate genotypes; %d unique genotypes remain.\n",
+          ntips - crispr_muts->ncells, crispr_muts->ncells);
+        ntips = crispr_muts->ncells;
+      }
       names = smalloc(ntips * sizeof(char*));
       for (i = 0; i < ntips; i++)
         names[i] = ((String*)lst_get_ptr(crispr_muts->cellnames, i))->chars;
@@ -593,6 +601,10 @@ int main(int argc, char *argv[]) {
 
       for (i = 0; i < nsamples; i++) {
         TreeNode *t = (TreeNode *)lst_get_ptr(trees, i);
+
+        if (had_dups == TRUE)
+          cpr_add_dup_leaves(t, crispr_muts); /* add back in duplicate leaves if needed */
+        
         tr_print(stdout, t, TRUE);
 
         /* in these cases we need to sample cell states for each tree */
@@ -621,7 +633,10 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Writing posterior mean tree...\n");
         Vector *mu_full = vec_new(mmvn->d * mmvn->n);
         mmvn_save_mu(mmvn, mu_full);
-        tr_print(postmeanfile, nj_mean(mu_full, names, covar_data), TRUE);
+        TreeNode *t = nj_mean(mu_full, names, covar_data);
+        if (had_dups == TRUE)
+          cpr_add_dup_leaves(t, crispr_muts); /* add back in duplicate leaves if needed */
+        tr_print(postmeanfile, t, TRUE);
         vec_free(mu_full);
       }
     }

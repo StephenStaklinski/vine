@@ -36,7 +36,9 @@ typedef struct {
   List *sitenames;
   List *cellnames;
   List *cellmuts;
-  int *sitewise_nstates; 
+  int *sitewise_nstates;
+  List **dupnames; /* element i is list of names of cells with same
+                    * genotype as cell i, or NULL if no duplicates */
 } CrisprMutTable;
 
 /* model for mutations along branches of a phylogenetic tree; allows
@@ -95,6 +97,10 @@ int cpr_get_mut(CrisprMutTable *M, int cell, int site);
 void cpr_set_mut(CrisprMutTable *M, int cell, int site, int val);
 
 void cpr_renumber_states(CrisprMutTable *M);
+
+void cpr_deduplicate(CrisprMutTable *M);
+
+void cpr_add_dup_leaves(TreeNode *tree, CrisprMutTable *M);
 
 double cpr_compute_log_likelihood(CrisprMutModel *cprmod,
                                   Vector *branchgrad);

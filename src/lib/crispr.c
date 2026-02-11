@@ -19,6 +19,7 @@
 #include <assert.h>
 #include <float.h>
 #include <phast/stringsplus.h>
+#include <phast/hashtable.h>
 #include <crispr.h>
 #include <likelihoods.h>
 
@@ -48,6 +49,7 @@ CrisprMutTable *cpr_new_table() {
   retval->ncells = 0;
   retval->nstates = 0;
   retval->sitewise_nstates = NULL;
+  retval->dupnames = NULL;
   return retval;
 }
 
@@ -68,8 +70,21 @@ CrisprMutTable *cpr_copy_table(CrisprMutTable *orig) {
     lst_push_ptr(copy->cellmuts, muts);
     for (j = 0; j < orig->nsites; j++) 
       lst_push_int(muts, cpr_get_mut(orig, i, j));
-  }  
+  }
 
+  if (orig->dupnames != NULL) {
+    copy->dupnames = malloc(orig->ncells * sizeof(List *));
+    for (i = 0; i < orig->ncells; i++) {
+      copy->dupnames[i] = NULL;
+      if (orig->dupnames[i] != NULL) {
+        copy->dupnames[i] = lst_new_ptr(lst_size(orig->dupnames[i]));
+        for (j = 0; j < lst_size(orig->dupnames[i]); j++)
+          lst_push_ptr(copy->dupnames[i],
+                       str_dup(lst_get_ptr(orig->dupnames[i], j)));
+      }
+    }
+  }
+  
   return copy;
 }
 
@@ -124,6 +139,17 @@ void cpr_free_table(CrisprMutTable *M) {
   lst_free(M->sitenames);
   lst_free(M->cellnames);
   lst_free(M->cellmuts);
+
+  if (M->dupnames != NULL) {
+    for (i = 0; i < M->ncells; i++) {
+      if (M->dupnames[i] != NULL) {
+        for (int j = 0; j < lst_size(M->dupnames[i]); j++)
+          str_free(lst_get_ptr(M->dupnames[i], j));
+        lst_free(M->dupnames[i]);
+      }
+    }
+    free(M->dupnames);
+  }
 }
 
 void cpr_print_table(CrisprMutTable *M, FILE *F) {
@@ -182,6 +208,59 @@ void cpr_renumber_states(CrisprMutTable *M) {
   }
   M->nstates = newnstates;
   free(statemap);
+}
+
+/* helper for cpr_duplicate (below) */
+static void cpr_geno_str(CrisprMutTable *M, int cell, String *s) {
+  str_clear(s);
+  for (int j = 0; j < M->nsites; j++) {
+    int state = cpr_get_mut(M, cell, j);
+    if (state == -1)
+      str_append_char(s, 'x');
+    else
+      str_append_int(s, state);
+    if (j < M->nsites-1) str_append_char(s, ',');
+  }
+}
+
+/* remove cells with duplicate genotypes and resize the table.
+   Maintain a record of the names of duplicates so they can be
+   re-added if necessary */
+void cpr_deduplicate(CrisprMutTable *M) {
+  Hashtable *seen = hsh_new(M->ncells);
+  String *genostr = str_new(M->nsites * 10);
+  List *newcellnames = lst_new_ptr(M->ncells);
+  List *newcellmuts = lst_new_ptr(M->ncells);
+
+  assert(M->dupnames == NULL); /* up to caller to ensure this is the case */
+  M->dupnames = malloc(M->ncells * sizeof(List *));
+  for (int i = 0; i < M->ncells; i++)      M->dupnames[i] = NULL;
+
+  for (int i = 0; i < M->ncells; i++) {
+    cpr_geno_str(M, i, genostr);
+    int prevcell = hsh_get_int(seen, genostr->chars);
+    if (prevcell == -1) {
+      hsh_put_int(seen, genostr->chars, lst_size(newcellnames));
+      lst_push_ptr(newcellnames, lst_get_ptr(M->cellnames, i));
+      lst_push_ptr(newcellmuts, lst_get_ptr(M->cellmuts, i));
+    }
+    else {
+      if (M->dupnames[prevcell] == NULL)
+        M->dupnames[prevcell] = lst_new_ptr(10);
+      String *dupname = lst_get_ptr(M->cellnames, i);
+      lst_push_ptr(M->dupnames[prevcell], str_dup(dupname));
+      str_free(dupname);
+      lst_free(lst_get_ptr(M->cellmuts, i));
+    }
+  }
+  lst_free(M->cellnames);
+  lst_free(M->cellmuts);
+  M->cellnames = newcellnames;
+  M->cellmuts = newcellmuts;
+  M->ncells = lst_size(M->cellnames);
+  M->dupnames = realloc(M->dupnames, M->ncells * sizeof(List *));
+  str_free(genostr);
+  hsh_free(seen);
 }
 
 /* helper function to avoid zeros resulting from combination of
@@ -1340,4 +1419,106 @@ double cpr_ll_parallel(CrisprMutModel *cprmod, Vector *branchgrad,
   free(thread_derivs);
 
   return ll_total;
+}
+
+/* Add back duplicate leaves that were collapsed by cpr_deduplicate.
+   For each leaf whose name matches a cell with duplicates, replace it
+   with a binary caterpillar subtree containing the original leaf plus
+   all duplicates, connected by zero-length branches (a polytomy
+   within the binary tree constraint). */
+void cpr_add_dup_leaves(TreeNode *tree, CrisprMutTable *M) {
+  int i, j, idx;
+  TreeNode *leaf, *newint, *newleaf, *subtree;
+
+  if (M->dupnames == NULL) return;
+
+  /* collect leaves to expand; can't modify tree during traversal */
+  List *trav = tr_postorder(tree);
+  int ntrav = lst_size(trav);
+  TreeNode **to_expand = smalloc(ntrav * sizeof(TreeNode *));
+  int *cell_idx = smalloc(ntrav * sizeof(int));
+  int nexpand = 0;
+  int total_added = 0;
+
+  for (i = 0; i < ntrav; i++) {
+    leaf = lst_get_ptr(trav, i);
+    if (leaf->lchild != NULL || leaf->rchild != NULL) continue;
+    String *namestr = str_new_charstr(leaf->name);
+    if (str_in_list_idx(namestr, M->cellnames, &idx) == 1 &&
+        M->dupnames[idx] != NULL) {
+      to_expand[nexpand] = leaf;
+      cell_idx[nexpand] = idx;
+      total_added += 2 * lst_size(M->dupnames[idx]);
+      nexpand++;
+    }
+    str_free(namestr);
+  }
+
+  if (nexpand == 0) {
+    sfree(to_expand);
+    sfree(cell_idx);
+    return;
+  }
+
+  /* expand each leaf into a caterpillar subtree */
+  for (i = 0; i < nexpand; i++) {
+    leaf = to_expand[i];
+    List *dups = M->dupnames[cell_idx[i]];
+    int ndups = lst_size(dups);
+    TreeNode *parent = leaf->parent;
+    double orig_dparent = leaf->dparent;
+
+    /* start with original leaf and first dup as siblings */
+    leaf->dparent = 0;
+
+    newleaf = tr_new_node();
+    strcpy(newleaf->name, ((String*)lst_get_ptr(dups, 0))->chars);
+    newleaf->dparent = 0;
+
+    subtree = tr_new_node();
+    subtree->lchild = leaf;
+    subtree->rchild = newleaf;
+    leaf->parent = subtree;
+    newleaf->parent = subtree;
+    subtree->dparent = 0;
+
+    /* wrap in additional internal nodes for remaining dups */
+    for (j = 1; j < ndups; j++) {
+      newleaf = tr_new_node();
+      strcpy(newleaf->name, ((String*)lst_get_ptr(dups, j))->chars);
+      newleaf->dparent = 0;
+
+      newint = tr_new_node();
+      newint->lchild = subtree;
+      newint->rchild = newleaf;
+      subtree->parent = newint;
+      newleaf->parent = newint;
+      newint->dparent = 0;
+
+      subtree = newint;
+    }
+
+    /* attach subtree in place of original leaf */
+    subtree->dparent = orig_dparent;
+    subtree->parent = parent;
+    if (parent->lchild == leaf)
+      parent->lchild = subtree;
+    else
+      parent->rchild = subtree;
+  }
+
+  sfree(to_expand);
+  sfree(cell_idx);
+
+  /* rebuild tree metadata */
+  tree->nnodes += total_added;
+  if (tree->preorder != NULL) {
+    lst_free(tree->preorder);
+    tree->preorder = NULL;
+  }
+  if (tree->postorder != NULL) {
+    lst_free(tree->postorder);
+    tree->postorder = NULL;
+  }
+  tr_set_nnodes(tree);
 }
