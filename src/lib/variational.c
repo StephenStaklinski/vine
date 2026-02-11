@@ -31,9 +31,10 @@
    Adam algorithm.  Takes initial tree model and alignment and
    distance matrix, dimensionality of Euclidean space to work in.
    Note: alters distance matrix */
-void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn,
-                        int nminibatch, double learnrate, int nbatches_conv,
-                        int min_nbatches, CovarData *data, FILE *logf) {
+void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn, int nminibatch,
+                        double learnrate, int nbatches_conv, int min_nbatches,
+                        CovarData *data, FILE *logf,
+                        unsigned int silent) {
 
   Vector *kldgrad, *avegrad, *m, *m_prev, *v, *v_prev,
     *best_mu, *best_sigmapar, *rescaledgrad, *sparsitygrad = NULL, 
@@ -131,7 +132,7 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn,
 
     /* simple update to user */
     if (t > 0 && t % 100 == 0)
-      fprintf(stderr, "Iteration %d; best ELBO=%.2f ...\n", t, bestelb);
+      if (!silent) fprintf(stderr, "Iteration %d; best ELBO=%.2f ...\n", t, bestelb);
     
     /* get directives from scheduler */
     sched_next(s, st, sm, sd);
@@ -221,7 +222,7 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn,
 
     /* check whether to re-enable Taylor approximation */
     if (taylor_stash != NULL && data->taylor == NULL && t == reenable_taylor_t) {
-      fprintf(stderr, "WARNING: re-enabling Taylor approximation.\n");
+      if (!silent) fprintf(stderr, "WARNING: re-enabling Taylor approximation.\n");
       data->taylor = taylor_stash;
       taylor_stash = NULL;
     }
@@ -233,7 +234,7 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn,
       /*                        &ave_lprior, &avemigll); */
       if ((data->crispr_mod != NULL && data->crispr_mod->zero_likl == TRUE) ||
           !isfinite(avell)) {
-        fprintf(stderr, "WARNING: Taylor approximation produced invalid likelihood; "
+        if (!silent) fprintf(stderr, "WARNING: Taylor approximation produced invalid likelihood; "
                 "switching to Monte Carlo.\n");
         reenable_taylor_t = t + 10;
         taylor_stash = data->taylor;
@@ -386,7 +387,7 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn,
     fprintf(logf, "\n");
   }
 
-  fprintf(stderr, "Converged in %d iterations; ELBO=%.2f ...\n", t, bestelb);
+  if (!silent) fprintf(stderr, "Converged in %d iterations; ELBO=%.2f ...\n", t, bestelb);
 
   vec_free(avegrad); vec_free(rescaledgrad); vec_free(kldgrad);
   vec_free(sparsitygrad); vec_free(m);

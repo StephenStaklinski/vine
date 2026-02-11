@@ -1512,13 +1512,5 @@ void cpr_add_dup_leaves(TreeNode *tree, CrisprMutTable *M) {
 
   /* rebuild tree metadata */
   tree->nnodes += total_added;
-  if (tree->preorder != NULL) {
-    lst_free(tree->preorder);
-    tree->preorder = NULL;
-  }
-  if (tree->postorder != NULL) {
-    lst_free(tree->postorder);
-    tree->postorder = NULL;
-  }
-  tr_set_nnodes(tree);
+  tr_reset_nnodes(tree);
 }

@@ -75,7 +75,7 @@ int main(int argc, char *argv[]) {
                embedding_only = FALSE, rejection_sampling = FALSE,
                mvn_dump = FALSE, natural_grad = FALSE, is_crispr = FALSE,
                ultrametric = FALSE, radial_flow = FALSE, planar_flow = FALSE,
-               use_taylor = TRUE;
+               use_taylor = TRUE, had_dups = FALSE, silent = FALSE;
   MSA *msa = NULL;
   enum covar_type covar_param = CONST;
   char *alphabet = "ACGT";
@@ -100,7 +100,7 @@ int main(int argc, char *argv[]) {
   enum crispr_mutrates_type crispr_muttype = UNIF;
   TreePrior *tprior = NULL;
   enum tree_prior_type tp_type = NONE;
-  unsigned int relclock = FALSE, had_dups = FALSE;
+  unsigned int relclock = FALSE;
   MigTable *migtable = NULL;
   List *migstates_lst = NULL;
   char *primary_state = NULL;
@@ -148,11 +148,12 @@ int main(int argc, char *argv[]) {
     {"dgamma", 1, 0, 'K'},
     {"montecarlo", 0, 0, 'y'},
     {"version", 0, 0, 'x'},
+    {"silent", 0, 0, 'X'},
     {"help", 0, 0, 'h'},
     {0, 0, 0, 0}
   };
 
-  while ((c = getopt_long(argc, argv, "0:1:b:B:c:d:D:egG:hHi:FZj:JkK:l:L:m:M:n:No:v:r:Rt:T:Vw:W:S:s:CY:yPp:x", long_opts, &opt_idx)) != -1) {
+  while ((c = getopt_long(argc, argv, "0:1:b:B:c:d:D:egG:hHi:FZj:JkK:l:L:m:M:n:No:v:r:Rt:T:Vw:W:S:s:CY:yPp:Xx", long_opts, &opt_idx)) != -1) {
     switch (c) {
     case 'b':
       batchsize = atoi(optarg);
@@ -333,6 +334,9 @@ int main(int argc, char *argv[]) {
     case 'y':
       use_taylor = FALSE;
       break;
+    case 'X':
+      silent = TRUE;
+      break;
     case 'x':
       printf("VINE version %s\n", VINE_VERSION);
       exit(0);
@@ -361,7 +365,7 @@ int main(int argc, char *argv[]) {
   if (tprior != NULL && (is_crispr == TRUE || ultrametric == TRUE))
     die("Tree prior cannot be used with CRISPR mutation model or ultrametric trees.\n");
   
-  if (rank != DEFAULT_RANK && covar_param != LOWR)
+  if (rank != DEFAULT_RANK && covar_param != LOWR && !silent)
     fprintf(stderr, "WARNING: --rank ignored when --covar is not LOWR\n");
 
   if (migtable != NULL && is_crispr == FALSE)
@@ -376,7 +380,7 @@ int main(int argc, char *argv[]) {
   if (nexusfile != NULL && migtable == NULL)
       die("--labeled-trees requires --migration\n");
 
-  if (use_taylor && batchsize != DEFAULT_BATCHSIZE)
+  if (use_taylor && batchsize != DEFAULT_BATCHSIZE && !silent)
     fprintf(stderr,
             "WARNING: --batchsize ignored when using Taylor approximation.\n");
 
@@ -392,16 +396,21 @@ int main(int argc, char *argv[]) {
     if (optind != argc - 1)
       die("ERROR: alignment/mutation file required.\n");
 
-    fprintf(stderr, "Reading genotype data from %s...\n", argv[optind]);
+    if (!silent) fprintf(stderr, "Reading genotype data from %s...\n", argv[optind]);
     infile = phast_fopen(argv[optind], "r");
     if (is_crispr) { /* CRISPR mutation table */
       crispr_muts = cpr_read_table(infile);
       ntips = crispr_muts->ncells;
+      if (!silent) fprintf(stderr, "Read mutation matrix with %d cells and %d sites...\n", crispr_muts->ncells, crispr_muts->nsites);
+      
+      if (migtable != NULL) /* do this before deduplication */
+        mig_check_table(migtable, crispr_muts); /* ensure same cell names */
+
       cpr_deduplicate(crispr_muts); /* collapse identical genotypes; modifies
                                        crispr_muts in place */
       if (crispr_muts->ncells < ntips) {
         had_dups = TRUE;
-        fprintf(stderr, "Collapsed %d duplicate genotypes; %d unique genotypes remain.\n",
+        if (!silent) fprintf(stderr, "Collapsed %d duplicates; %d unique genotypes remain...\n",
           ntips - crispr_muts->ncells, crispr_muts->ncells);
         ntips = crispr_muts->ncells;
       }
@@ -412,8 +421,6 @@ int main(int argc, char *argv[]) {
       crispr_mod = cpr_new_model(crispr_muts, NULL, crispr_modtype, crispr_muttype);
       /* leave tree model null for now; fill in later */
 
-      if (migtable != NULL)
-        mig_check_table(migtable, crispr_muts); /* ensure same cell names */
     }
     else { /* standard alignment file */
       if (format == UNKNOWN_FORMAT)
@@ -423,10 +430,12 @@ int main(int argc, char *argv[]) {
                        NULL, NULL, -1, TRUE, NULL, NO_STRIP, FALSE);
       else
         msa = msa_new_from_file_define_format(infile, format, alphabet);
-
+      
       if (msa->ss == NULL)
         ss_from_msas(msa, 1, TRUE, NULL, NULL, NULL, -1, 0);
 
+      if (!silent) fprintf(stderr, "Read DNA alignment with %d sequences and %d sites (%d distinct tuples)...\n", msa->nseqs, msa->length, msa->ss->ntuples);
+      
       names = msa->names;
       ntips = msa->nseqs;
     }
@@ -478,7 +487,7 @@ int main(int argc, char *argv[]) {
   if (dim == -1) {
     assert(DEFAULT_DIM_INTERCEPT >= 2);
     dim = round(DEFAULT_DIM_INTERCEPT + DEFAULT_DIM_SLOPE * log((double)ntips));
-    fprintf(stderr, "Setting dimensionality to default of %d based on %d taxa...\n", dim, ntips);
+    if (!silent) fprintf(stderr, "Setting dimensionality to default of %d based on %d taxa...\n", dim, ntips);
   }
   
   covar_data = nj_new_covar_data(covar_param, D, dim, msa, crispr_mod, names,
@@ -505,8 +514,12 @@ int main(int argc, char *argv[]) {
        or NJ-only */
     tree = nj_inf(D, names, NULL, NULL, covar_data);
 
-    if (nj_only == TRUE) /* just print in this case */
+    if (nj_only == TRUE) { /* just print in this case */
+      if (had_dups == TRUE)
+        cpr_add_dup_leaves(tree, crispr_muts); /* add back in duplicate leaves if needed */
+      if (!silent) fprintf(stderr, "Outputting NJ tree...\n");
       tr_print(stdout, tree, TRUE);
+    }
 
     else {  /* full variational inference */
       if (msa == NULL && crispr_muts == NULL)
@@ -523,21 +536,21 @@ int main(int argc, char *argv[]) {
           tm_init_backgd(mod, msa, -1);
 
         if (is_crispr) {
-          fprintf(stderr, "Using CRISPR mutation model...\n");
+          if (!silent) fprintf(stderr, "Using CRISPR mutation model...\n");
           crispr_mod->mod = mod;
           cpr_prep_model(crispr_mod);
         }
         else if (subst_mod == JC69) {
-          fprintf(stderr, "Using JC69 substitution model...\n");
+          if (!silent) fprintf(stderr, "Using JC69 substitution model...\n");
           tm_set_JC69_matrix(mod);
         }
         else if (subst_mod == HKY85) {
-          fprintf(stderr, "Using HKY85 substitution model...\n");
+          if (!silent) fprintf(stderr, "Using HKY85 substitution model...\n");
           covar_data->hky_kappa = DEFAULT_KAPPA;
           tm_set_HKY_matrix(mod, covar_data->hky_kappa, -1);
         }
         else if (subst_mod == REV) {
-          fprintf(stderr, "Using GTR substitution model...\n");
+          if (!silent) fprintf(stderr, "Using GTR substitution model...\n");
           covar_data->gtr_params = vec_new(GTR_NPARAMS);
           covar_data->deriv_gtr = vec_new(GTR_NPARAMS);
           vec_set_random(covar_data->gtr_params, 1.0, 0.1);
@@ -548,7 +561,7 @@ int main(int argc, char *argv[]) {
           (assert(0)); /* should not get here */
 
         if (dgamma_cats > 1) {
-          fprintf(stderr, "Using %d discrete gamma rate categories...\n", dgamma_cats);
+          if (!silent) fprintf(stderr, "Using %d discrete gamma rate categories...\n", dgamma_cats);
           covar_data->dgamma_cats = dgamma_cats;
           DiscreteGamma(mod->freqK, mod->rK, mod->alpha, mod->alpha, 
             mod->nratecats, 0); 
@@ -570,9 +583,9 @@ int main(int argc, char *argv[]) {
         exit(0);
       }
 
-      if (use_taylor)
+      if (use_taylor && !silent)
         fprintf(stderr, "Using Taylor approximation for ELBO...\n");
-      else
+      else if (!silent)
         fprintf(stderr, "Using Monte Carlo estimation of ELBO...\n");
 
       if (nthreads > 1) {
@@ -580,18 +593,21 @@ int main(int argc, char *argv[]) {
           crispr_mod->nthreads = nthreads;
         else
           covar_data->nthreads = nthreads;
-        fprintf(stderr, "Using %d threads for likelihood calculations...\n", nthreads);
+        if (!silent) fprintf(stderr, "Using %d threads for likelihood calculations...\n", nthreads);
       }
       else
-        fprintf(stderr, "Multithreading is OFF (see -j)...\n");  
+        if (!silent) fprintf(stderr, "Multithreading is OFF (see -j)...\n");  
 
-      fprintf(stderr, "Starting variational inference...\n");
+      if (!silent) fprintf(stderr, "Starting variational inference...\n");
 
       nj_variational_inf(mod, mmvn, batchsize, learnrate,
                          niter_conv, min_iter, 
-                         covar_data, logfile);
+                         covar_data, logfile, silent);
 
-      fprintf(stderr, "Sampling trees...\n");
+      if (had_dups == TRUE && !silent)
+        fprintf(stderr, "Sampling trees and re-adding duplicate cells...\n");
+      else if (!silent)
+        fprintf(stderr, "Sampling trees...\n");
 
       if (rejection_sampling == TRUE) 
         trees = nj_var_sample_rejection(nsamples, mmvn, covar_data, mod, logfile);
@@ -609,7 +625,7 @@ int main(int argc, char *argv[]) {
 
         /* in these cases we need to sample cell states for each tree */
         if (graphsfile != NULL || nexusfile != NULL) {
-          if (i == 0)
+          if (i == 0 && !silent)
             fprintf(stderr, "Sampling cell states...\n");
 
           if (migstates_lst == NULL) migstates_lst = lst_new_ptr(nsamples);
@@ -621,16 +637,16 @@ int main(int argc, char *argv[]) {
 
       /* output sampled cell states if needed */
       if (graphsfile != NULL) {
-        fprintf(stderr, "Writing migration graphs...\n");
+        if (!silent) fprintf(stderr, "Writing migration graphs...\n");
         mig_print_set_dot(trees, graphsfile, migtable, migstates_lst);
       }
       if (nexusfile != NULL) {
-        fprintf(stderr, "Writing cell-state-labeled trees...\n");
+        if (!silent) fprintf(stderr, "Writing cell-state-labeled trees...\n");
         mig_print_set_labeled_nexus(trees, nexusfile, migtable, migstates_lst);
       }
 
       if (postmeanfile != NULL) {
-        fprintf(stderr, "Writing posterior mean tree...\n");
+        if (!silent) fprintf(stderr, "Writing posterior mean tree...\n");
         Vector *mu_full = vec_new(mmvn->d * mmvn->n);
         mmvn_save_mu(mmvn, mu_full);
         TreeNode *t = nj_mean(mu_full, names, covar_data);
@@ -672,7 +688,7 @@ int main(int argc, char *argv[]) {
   if (nexusfile != NULL)
     fclose(nexusfile);
 
-  fprintf(stderr, "Done.\n");
+  if (!silent) fprintf(stderr, "Done.\n");
   
   return (0);
 }

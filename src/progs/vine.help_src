@@ -65,6 +65,9 @@ MAIN OPTIONS:
     --logfile, -l <logfile.txt>
         Output detailed log for variational inference to specified file
 
+    --silent, -X
+        Omit updates on progress to terminal.
+
     --parallel, -j <nthreads>
     	Enable <nthreads> parallel threads to accelerate likelihood
     	calculations.  Default is 1 (no multithreading). Requires OpenMP.
