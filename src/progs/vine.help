@@ -1,4 +1,4 @@
-char HELP[14042] = "\nPROGRAM: vine [Variational Inference with Node Embedding]\n\
+char HELP[14124] = "\nPROGRAM: vine [Variational Inference with Node Embedding]\n\
 \n\
 USAGE: vine [OPTIONS] alignment.fa > trees.nwk\n\
 \n\
@@ -31,7 +31,7 @@ MAIN OPTIONS:\n\
         Display this help message and exit.\n\
 \n\
     --version, -x\n\
-        Display the current version number.\n\
+        Display the current version number and exit.\n\
 \n\
     --dimensionality, -D <D>\n\
         Set dimensionality of the space in which taxa are represented\n\
@@ -64,6 +64,9 @@ MAIN OPTIONS:\n\
 	\n\
     --logfile, -l <logfile.txt>\n\
         Output detailed log for variational inference to specified file\n\
+\n\
+    --silent, -X\n\
+        Omit updates on progress to terminal.\n\
 \n\
     --parallel, -j <nthreads>\n\
     	Enable <nthreads> parallel threads to accelerate likelihood\n\
