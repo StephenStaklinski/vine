@@ -26,7 +26,7 @@
 
 struct mdag; /* forward declaration */
 
-typedef struct {
+typedef struct mgtab {
   int ncells;
   int nstates;
   int nparams; /* number of free parameters in migration model */

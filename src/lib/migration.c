@@ -310,7 +310,7 @@ double mig_compute_log_likelihood(TreeModel *mod, MigTable *mg,
 
     if (n->lchild == NULL) {
       /* leaf: base case of recursion */
-      cell = cprmod->mod->msa_seq_idx[n->id]; /* CHECK.  okay to use this version? */
+      cell = cprmod->mod->msa_seq_idx[n->id];
       
       if (cell == -1)
         die("ERROR in mig_compute_log_likelihood: leaf '%s' not found in "
@@ -559,14 +559,24 @@ double mig_compute_log_likelihood(TreeModel *mod, MigTable *mg,
 
 /* set P = exp(Qt) for each branch in the tree model */
 void mig_update_subst_matrices(TreeNode *tree, MigTable *mg) {
-  if (mg->Pt == NULL) { /* first time through */
+  static int last_nnodes = -1;
+
+  if (mg->Pt != NULL && tree->nnodes != last_nnodes) { /* this can happen with deduplication */    
+    for (int nodeidx = 0; nodeidx < lst_size(mg->Pt); nodeidx++)
+      mm_free(lst_get_ptr(mg->Pt, nodeidx));
+    mg->Pt = NULL; /* force reallocation */
+  }
+
+  if (mg->Pt == NULL) { /* first time through or realloc */
     mg->Pt = lst_new_ptr(tree->nnodes);
     for (int nodeidx = 0; nodeidx < tree->nnodes; nodeidx++) {
       MarkovMatrix *P = mm_new(mg->nstates, NULL, DISCRETE);
       mm_set_eigentype(P, REAL_NUM);
       lst_push_ptr(mg->Pt, P);
     }
+    last_nnodes = tree->nnodes;
   }
+  
   for (int nodeidx = 0; nodeidx < tree->nnodes; nodeidx++) {
     TreeNode *n = lst_get_ptr(tree->nodes, nodeidx);
     MarkovMatrix *P = lst_get_ptr(mg->Pt, nodeidx);

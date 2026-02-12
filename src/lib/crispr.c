@@ -211,7 +211,7 @@ void cpr_renumber_states(CrisprMutTable *M) {
 }
 
 /* helper for cpr_duplicate (below) */
-static void cpr_geno_str(CrisprMutTable *M, int cell, String *s) {
+static void cpr_geno_str(CrisprMutTable *M, MigTable *mg, int cell, String *s) {
   str_clear(s);
   for (int j = 0; j < M->nsites; j++) {
     int state = cpr_get_mut(M, cell, j);
@@ -221,12 +221,17 @@ static void cpr_geno_str(CrisprMutTable *M, int cell, String *s) {
       str_append_int(s, state);
     if (j < M->nsites-1) str_append_char(s, ',');
   }
+  if (mg != NULL) {  /* in case of migration model, only remove if state is the same */
+    int migstate = lst_get_int(mg->states, cell);
+    str_append_char(s, '|');
+    str_append_int(s, migstate);
+  }
 }
 
 /* remove cells with duplicate genotypes and resize the table.
    Maintain a record of the names of duplicates so they can be
    re-added if necessary */
-void cpr_deduplicate(CrisprMutTable *M) {
+void cpr_deduplicate(CrisprMutTable *M, struct mgtab *mg) {
   Hashtable *seen = hsh_new(M->ncells);
   String *genostr = str_new(M->nsites * 10);
   List *newcellnames = lst_new_ptr(M->ncells);
@@ -237,7 +242,7 @@ void cpr_deduplicate(CrisprMutTable *M) {
   for (int i = 0; i < M->ncells; i++)      M->dupnames[i] = NULL;
 
   for (int i = 0; i < M->ncells; i++) {
-    cpr_geno_str(M, i, genostr);
+    cpr_geno_str(M, mg, i, genostr);
     int prevcell = hsh_get_int(seen, genostr->chars);
     if (prevcell == -1) {
       hsh_put_int(seen, genostr->chars, lst_size(newcellnames));

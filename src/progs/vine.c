@@ -406,7 +406,7 @@ int main(int argc, char *argv[]) {
       if (migtable != NULL) /* do this before deduplication */
         mig_check_table(migtable, crispr_muts); /* ensure same cell names */
 
-      cpr_deduplicate(crispr_muts); /* collapse identical genotypes; modifies
+      cpr_deduplicate(crispr_muts, migtable); /* collapse identical genotypes; modifies
                                        crispr_muts in place */
       if (crispr_muts->ncells < ntips) {
         had_dups = TRUE;

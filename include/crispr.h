@@ -18,8 +18,9 @@
 #include <phast/tree_model.h>
 #include <phast/vector.h>
 
-/* forward declarations to avoid circular include with likelihoods.h */
+/* forward declarations to avoid circular includes */
 struct NJDerivs;
+struct mgtab; /* forward declaration */
 
 /* initialization and bounds for silencing rate */
 #define CPR_SIL_RATE_INIT 0.4
@@ -98,7 +99,7 @@ void cpr_set_mut(CrisprMutTable *M, int cell, int site, int val);
 
 void cpr_renumber_states(CrisprMutTable *M);
 
-void cpr_deduplicate(CrisprMutTable *M);
+void cpr_deduplicate(CrisprMutTable *M, struct mgtab *mg);
 
 void cpr_add_dup_leaves(TreeNode *tree, CrisprMutTable *M);
 
