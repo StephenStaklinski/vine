@@ -402,8 +402,8 @@ int main(int argc, char *argv[]) {
       crispr_muts = cpr_read_table(infile);
       ntips = crispr_muts->ncells;
       if (!silent) fprintf(stderr, "Read mutation matrix with %d cells and %d sites...\n", crispr_muts->ncells, crispr_muts->nsites);
-      
-      if (migtable != NULL) /* do this before deduplication */
+
+      if (migtable != NULL)  /* do this before deduplication */
         mig_check_table(migtable, crispr_muts); /* ensure same cell names */
 
       cpr_deduplicate(crispr_muts, migtable); /* collapse identical genotypes; modifies
@@ -539,6 +539,8 @@ int main(int argc, char *argv[]) {
           if (!silent) fprintf(stderr, "Using CRISPR mutation model...\n");
           crispr_mod->mod = mod;
           cpr_prep_model(crispr_mod);
+          if (!silent && migtable != NULL)
+            fprintf(stderr, "Using migration model with %d states...\n", migtable->nstates);
         }
         else if (subst_mod == JC69) {
           if (!silent) fprintf(stderr, "Using JC69 substitution model...\n");
