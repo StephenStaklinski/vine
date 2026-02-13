@@ -38,12 +38,16 @@ The number of threads can be controlled with the -j option.
 
 ## Usage
 
-For usage of the main vine executable and supporting programs, run them
+For detailed usage of the main vine executable and supporting programs, run them
 with `--help`:
 
 ```bash
 vine --help
 ```
+
+The same full usage message for vine is also available
+directly in the source tree:
+[vine.help_src](src/progs/vine.help_src).
 
 ## Support
 
