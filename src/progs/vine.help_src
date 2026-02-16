@@ -65,6 +65,10 @@ MAIN OPTIONS:
     --logfile, -l <logfile.txt>
         Output detailed log for variational inference to specified file
 
+    --minimal_log, -q
+        With --logfile, write only core metrics (for example ll and ELBO)
+        and omit per-parameter values.
+
     --silent, -X
         Omit updates on progress to terminal.
 
