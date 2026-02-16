@@ -1288,7 +1288,7 @@ void cpr_prep_model(CrisprMutModel *cprmod) {
   if (use_on_demand)
     fprintf(stderr, "Using on-demand transition probability calculations (no caching) due to large number of cells...\n");
   else
-    fprintf(stderr, "Pre-computing transition probabilities for all nodes and sites...\n");
+    fprintf(stderr, "Caching transition probabilities branchwise...\n");
   if (!use_on_demand) {
     if (cprmod->model_type == SITEWISE) {
       cprmod->Pt = lst_new_ptr(cprmod->nsites);
