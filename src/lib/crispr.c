@@ -36,9 +36,6 @@
 /* for use in likelihood calculations to avoid underflow */
 #define REL_CUTOFF 1e-300
 
-/* use on-demand transition probabilities for larger datasets */
-#define CPR_ON_DEMAND_CELL_THRESHOLD 1000
-
 /* auxiliary data used to keep track of restricted ancestral state
    possibilities in likelihood calculation */
 static CrisprAncestralStateSets *ancsets = NULL;
@@ -311,11 +308,6 @@ static inline double cpr_get_branch_prob(const CprBranchParams *bp, int i, int j
   return p + CPR_PFLOOR;  /* derivative still same as original value */
 }
 
-static inline double cpr_get_branch_prob_cached(MarkovMatrix *P, int i, int j) {
-  double p = mm_get(P, i, j);
-  return p + CPR_PFLOOR; /* note derivative still same as orig */
-}
-
 /* Compute and return the log likelihood of a tree model with respect
    to a CRISPR mutation table.  This function is derived from
    nj_compute_log_likelihood but is customized for the irreversible
@@ -370,7 +362,6 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
   
   for (site = r0; site < r1; site++) {
     int silst;
-    List *Pt = (cprmod->Pt != NULL ? lst_get_ptr(cprmod->Pt, site) : NULL);
     Vector *mutrates = lst_get_ptr(cprmod->sitewise_mutrates, site);
     CprBranchParams leading_bp;
     double this_deriv_sil;
@@ -401,17 +392,10 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
        simulate this behavior by setting the root eq freqs equal to
        the conditional distribution at the end of the branch given the
        unedited state at the start */
-    if (Pt != NULL) {
-      MarkovMatrix *leading_Pt = lst_get_ptr(Pt, cprmod->mod->tree->id);
-      for (i = 0; i < nstates; i++)
-        root_eqfreqs[i] = cpr_get_branch_prob_cached(leading_Pt, 0, i);
-    }
-    else {
-      cpr_set_branch_params(&leading_bp, silst, cprmod->mod->tree->dparent,
-                            cprmod->sil_rate);
-      for (i = 0; i < nstates; i++)
-        root_eqfreqs[i] = cpr_get_branch_prob(&leading_bp, 0, i, mutrates);
-    }
+    cpr_set_branch_params(&leading_bp, silst, cprmod->mod->tree->dparent,
+                          cprmod->sil_rate);
+    for (i = 0; i < nstates; i++)
+      root_eqfreqs[i] = cpr_get_branch_prob(&leading_bp, 0, i, mutrates);
     
     for (nodeidx = 0; nodeidx < lst_size(traversal); nodeidx++) {
       int mut;
@@ -439,17 +423,10 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
       else {
         /* general recursive case */
         CprBranchParams lbp, rbp;
-        MarkovMatrix *lsubst_mat = NULL, *rsubst_mat = NULL;
         int lchildtype, rchildtype, thistype;
 
-        if (Pt != NULL) {
-          lsubst_mat = lst_get_ptr(Pt, n->lchild->id);
-          rsubst_mat = lst_get_ptr(Pt, n->rchild->id);
-        }
-        else {
-          cpr_set_branch_params(&lbp, silst, n->lchild->dparent, cprmod->sil_rate);
-          cpr_set_branch_params(&rbp, silst, n->rchild->dparent, cprmod->sil_rate);
-        }
+        cpr_set_branch_params(&lbp, silst, n->lchild->dparent, cprmod->sil_rate);
+        cpr_set_branch_params(&rbp, silst, n->rchild->dparent, cprmod->sil_rate);
         
         /* first set nodetype based on nodetypes of children */
         lchildtype = nodetypes[n->lchild->id];
@@ -502,21 +479,13 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
           pstate = lst_get_int(par_states, i);
           for (j = 0; j < lst_size(lchild_states); j++) {
             lcstate = lst_get_int(lchild_states, j);
-            if (Pt != NULL)
-              totl += pL[lcstate][n->lchild->id] *
-                cpr_get_branch_prob_cached(lsubst_mat, pstate, lcstate);
-            else
-              totl += pL[lcstate][n->lchild->id] *
-                cpr_get_branch_prob(&lbp, pstate, lcstate, mutrates);
+            totl += pL[lcstate][n->lchild->id] *
+              cpr_get_branch_prob(&lbp, pstate, lcstate, mutrates);
           }
           for (k = 0; k < lst_size(rchild_states); k++) {
             rcstate = lst_get_int(rchild_states, k);
-            if (Pt != NULL)
-              totr += pL[rcstate][n->rchild->id] *
-                cpr_get_branch_prob_cached(rsubst_mat, pstate, rcstate);
-            else
-              totr += pL[rcstate][n->rchild->id] *
-                cpr_get_branch_prob(&rbp, pstate, rcstate, mutrates);
+            totr += pL[rcstate][n->rchild->id] *
+              cpr_get_branch_prob(&rbp, pstate, rcstate, mutrates);
           }
           
           pL[pstate][n->id] = totl * totr;
@@ -602,15 +571,8 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
           sibling = (n == n->parent->lchild ?
                      n->parent->rchild : n->parent->lchild);
           CprBranchParams par_bp, sib_bp;
-          MarkovMatrix *par_subst_mat = NULL, *sib_subst_mat = NULL;
-          if (Pt != NULL) {
-            par_subst_mat = lst_get_ptr(Pt, n->id);
-            sib_subst_mat = lst_get_ptr(Pt, sibling->id);
-          }
-          else {
-            cpr_set_branch_params(&par_bp, silst, n->dparent, cprmod->sil_rate);
-            cpr_set_branch_params(&sib_bp, silst, sibling->dparent, cprmod->sil_rate);
-          }
+          cpr_set_branch_params(&par_bp, silst, n->dparent, cprmod->sil_rate);
+          cpr_set_branch_params(&sib_bp, silst, sibling->dparent, cprmod->sil_rate);
 
           par_states = cpr_get_state_set(ancsets, nodetypes, n->parent, nstates);
           child_states = cpr_get_state_set(ancsets, nodetypes, n, nstates);
@@ -628,9 +590,7 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
               sstate = lst_get_int(sib_states, k);
               double b = pL[sstate][sibling->id];
               if (b > 0.0)
-                tmp[pstate] += a * b * (Pt != NULL
-                  ? cpr_get_branch_prob_cached(sib_subst_mat, pstate, sstate)
-                  : cpr_get_branch_prob(&sib_bp, pstate, sstate, mutrates));
+                tmp[pstate] += a * b * (cpr_get_branch_prob(&sib_bp, pstate, sstate, mutrates));
             }
           }
 
@@ -640,9 +600,7 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
             double sum = 0.0;
             for (j = 0; j < lst_size(par_states); j++) {      /* parent state */
               pstate = lst_get_int(par_states, j);
-              sum += tmp[pstate] * (Pt != NULL
-                ? cpr_get_branch_prob_cached(par_subst_mat, pstate, cstate)
-                : cpr_get_branch_prob(&par_bp, pstate, cstate, mutrates));
+              sum += tmp[pstate] * (cpr_get_branch_prob(&par_bp, pstate, cstate, mutrates));
             }
             pLbar[cstate][n->id] = sum;
           }
@@ -695,11 +653,7 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
                    n->parent->rchild : n->parent->lchild);
 
         CprBranchParams sib_bp;
-        MarkovMatrix *sib_subst_mat = NULL;
-        if (Pt != NULL)
-          sib_subst_mat = lst_get_ptr(Pt, sibling->id);
-        else
-          cpr_set_branch_params(&sib_bp, silst, sibling->dparent, cprmod->sil_rate);
+        cpr_set_branch_params(&sib_bp, silst, sibling->dparent, cprmod->sil_rate);
 
         /* get corresponding sets of eligible states */
         par_states = cpr_get_state_set(ancsets, nodetypes, par, nstates);
@@ -713,9 +667,7 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
           tmp[pstate] = 0;
           for (k = 0; k < lst_size(sib_states); k++) { /* sibling */
             sstate = lst_get_int(sib_states, k);
-            tmp[pstate] += pL[sstate][sibling->id] * (Pt != NULL
-              ? cpr_get_branch_prob_cached(sib_subst_mat, pstate, sstate)
-              : cpr_get_branch_prob(&sib_bp, pstate, sstate, mutrates));
+            tmp[pstate] += pL[sstate][sibling->id] * (cpr_get_branch_prob(&sib_bp, pstate, sstate, mutrates));
           }
         }
 
@@ -859,17 +811,6 @@ double cpr_compute_pw_dist(CrisprMutTable *M, int i, int j) {
     d = 3; /* set a max to keep the initialization reasonable */
 
   return d;
-}
-
-/* set a substitution matrix for each edge based on current branch
-   lengths and sitewise rate parameters */
-void cpr_set_subst_matrices(TreeModel *mod, double silent_rate,
-                            List *Pt, Vector *mutrates) {
-  for (int nodeidx = 0; nodeidx < mod->tree->nnodes; nodeidx++) {
-    TreeNode *n = lst_get_ptr(mod->tree->nodes, nodeidx);
-    MarkovMatrix *P = lst_get_ptr(Pt, nodeidx);
-    cpr_set_branch_matrix(P, n->dparent, silent_rate, mutrates); 
-  }    
 }
 
 /* set P = exp(Qt) matrix for branch length t, using parameterization
@@ -1244,7 +1185,6 @@ CrisprMutModel *cpr_new_model(CrisprMutTable *M, TreeModel *mod,
   retval->leading_t = 0.05;
   retval->mutrates = NULL;
   retval->sitewise_mutrates = NULL;
-  retval->Pt = NULL;
   retval->mutrates_type = mrtype;
   retval->nthreads = 1;
   return retval;
@@ -1255,9 +1195,7 @@ CrisprMutModel *cpr_new_model(CrisprMutTable *M, TreeModel *mod,
    function allocates new memory and should be called only once prior
    to repeated likelihood calculations */
 void cpr_prep_model(CrisprMutModel *cprmod) {
-  int j, nodeidx;
-  int use_on_demand;
-  List *thisPt;
+  int j;
   
   if (cprmod->model_type == SITEWISE) {
     cprmod->mut = cpr_new_sitewise_table(cprmod->mut); /* replace with pointer to new table */
@@ -1282,110 +1220,35 @@ void cpr_prep_model(CrisprMutModel *cprmod) {
     for (j = 0; j < cprmod->nsites; j++) 
       lst_push_ptr(cprmod->sitewise_mutrates, cprmod->mutrates);
   }
-
-  /* choose transition matrix caching strategy based on number of cells */
-  use_on_demand = (cprmod->mut->ncells > CPR_ON_DEMAND_CELL_THRESHOLD);
-  if (use_on_demand)
-    fprintf(stderr, "Using on-demand transition probability calculations (no caching) due to large number of cells...\n");
-  else
-    fprintf(stderr, "Caching transition probabilities branchwise...\n");
-  if (!use_on_demand) {
-    if (cprmod->model_type == SITEWISE) {
-      cprmod->Pt = lst_new_ptr(cprmod->nsites);
-      for (j = 0; j < cprmod->nsites; j++) {
-        thisPt = lst_new_ptr(cprmod->mod->tree->nnodes);
-        for (nodeidx = 0; nodeidx < cprmod->mod->tree->nnodes; nodeidx++)
-          lst_push_ptr(thisPt, mm_new(cprmod->mut->sitewise_nstates[j]+1, NULL, DISCRETE));
-        lst_push_ptr(cprmod->Pt, thisPt);
-      }
-    }
-    else {
-      cprmod->Pt = lst_new_ptr(cprmod->nsites);
-      thisPt = lst_new_ptr(cprmod->mod->tree->nnodes);
-      for (nodeidx = 0; nodeidx < cprmod->mod->tree->nnodes; nodeidx++)
-        lst_push_ptr(thisPt, mm_new(cprmod->nstates+1, NULL, DISCRETE));
-      for (j = 0; j < cprmod->nsites; j++) 
-        lst_push_ptr(cprmod->Pt, thisPt);
-    }
-  }
-  else
-    cprmod->Pt = NULL;
 }
 
 /* dump a CrisprMutModel object to a file.  For debugging */
 void cpr_print_model(CrisprMutModel *cprmod, FILE *F) {
-  int j, nodeidx;
+  int j;
   fprintf(F, "CrisprMutModel:\nmodel_type = %s\nnsites = %d\nncells = %d\nnstates = %d\nsilencing_rate = %f\n",
           (cprmod->model_type == SITEWISE ? "SITEWISE" : "GLOBAL"), cprmod->nsites,
           cprmod->ncells, cprmod->nstates, cprmod->sil_rate);
-  fprintf(F, "transition_cache = %s\n", cprmod->Pt == NULL ? "on-demand" : "precomputed");
   
   for (j = 0; j < cprmod->nsites; j++) {
     Vector *mutrates = lst_get_ptr(cprmod->sitewise_mutrates, j);
     fprintf(F, "Model for site %d:\n", j);
     fprintf(F, "Mutation rates:\n");
     vec_print(mutrates, F);
-    if (cprmod->Pt != NULL) {
-      List *thisPt = lst_get_ptr(cprmod->Pt, j);
-      for (nodeidx = 0; nodeidx < cprmod->mod->tree->nnodes; nodeidx++) {
-        TreeNode *n = lst_get_ptr(cprmod->mod->tree->nodes, nodeidx);
-        MarkovMatrix *mm = lst_get_ptr(thisPt, nodeidx);
-        fprintf(F, "Node %d (dparent %f):\nPt:\n", n->id, n->dparent);
-        mm_pretty_print(F, mm);
-      }
-    }
   }
 }
 
 /* free memory allocated by cpr_prep_model */
 void cpr_free_model(CrisprMutModel *cprmod) {
-  int j, nodeidx;
-  List *l;
+  int j;
   if (cprmod->model_type == SITEWISE && cprmod->sitewise_mutrates != NULL) {
     for (j = 0; j < cprmod->nsites; j++)
       vec_free(lst_get_ptr(cprmod->sitewise_mutrates, j));
-  }
-
-  if (cprmod->Pt != NULL) {
-    if (cprmod->model_type == SITEWISE) {
-      for (j = 0; j < cprmod->nsites; j++) {
-        l = lst_get_ptr(cprmod->Pt, j);
-        for (nodeidx = 0; nodeidx < cprmod->mod->tree->nnodes; nodeidx++)
-          mm_free(lst_get_ptr(l, nodeidx));
-        lst_free(l);
-      }
-    }
-    else {
-      l = lst_get_ptr(cprmod->Pt, 0);
-      for (nodeidx = 0; nodeidx < cprmod->mod->tree->nnodes; nodeidx++)
-        mm_free(lst_get_ptr(l, nodeidx));
-      lst_free(l);
-    }
   }
 
   if (cprmod->mutrates != NULL)
     vec_free(cprmod->mutrates);
   if (cprmod->sitewise_mutrates != NULL)
     lst_free(cprmod->sitewise_mutrates);
-  if (cprmod->Pt != NULL)
-    lst_free(cprmod->Pt);
-}
-
-/* update substitution matrices for a new set of branch lengths */
-void cpr_update_model(CrisprMutModel *cprmod) {
-  if (cprmod->Pt == NULL)
-    return;   /* on-demand transition probabilities: no cached matrices to refresh */
-
-  int j;
-  if (cprmod->model_type == SITEWISE) {
-    for (j = 0; j < cprmod->nsites; j++) 
-      cpr_set_subst_matrices(cprmod->mod, cprmod->sil_rate,
-                             lst_get_ptr(cprmod->Pt, j),
-                             lst_get_ptr(cprmod->sitewise_mutrates, j));                                              
-  }
-  else 
-    cpr_set_subst_matrices(cprmod->mod, cprmod->sil_rate,
-                           lst_get_ptr(cprmod->Pt, 0), cprmod->mutrates);
 }
 
 /* --- code for multithreading of likelihood calculations --- */
@@ -1403,9 +1266,6 @@ double cpr_compute_log_likelihood(CrisprMutModel *cprmod, Vector *branchgrad) {
 
   /* update length of leading branch */
   cprmod->mod->tree->dparent = cprmod->leading_t;
-
-  /* compute all necessary mutation probability matrices */
-  cpr_update_model(cprmod);
 
   /* also set up ancestral state sets if not already available */
   if (ancsets == NULL)

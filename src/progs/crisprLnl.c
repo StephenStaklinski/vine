@@ -138,7 +138,6 @@ int main(int argc, char *argv[]) {
   cprmod->leading_t = leading_t;
 
   cpr_prep_model(cprmod);
-  cpr_update_model(cprmod);
 
   /* compute likelihood */
   grad = vec_new(mod->tree->nnodes - 1);
