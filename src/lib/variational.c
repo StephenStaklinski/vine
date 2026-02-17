@@ -100,13 +100,18 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn, int nminibatch,
     if (log_all) {
       for (j = 0; j < fulld; j++)
         fprintf(logf, "mu.%d\t", j);
+      if (data->type == LOWR || data->type == DIAG) {
+        for (j = 0; j < sigmapar->size; j++)
+          fprintf(logf, "sigma.%d\t", j);
+      }
+    }
+    if (data->type == CONST || data->type == DIST) {
       for (j = 0; j < sigmapar->size; j++)
         fprintf(logf, "sigma.%d\t", j);
-      for (j = 0; j < n_nuisance_params; j++)
-        fprintf(logf, "%s\t", nj_get_nuisance_param_name(mod, data, j));
     }
+    for (j = 0; j < n_nuisance_params; j++)
+      fprintf(logf, "%s\t", nj_get_nuisance_param_name(mod, data, j));
     fprintf(logf, "\n");
-
   }
 
   /* initialize moments for Adam algorithm */
@@ -348,11 +353,17 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn, int nminibatch,
         fprintf(logf, "%f\t", avemigll); 
       if (log_all) {
         mmvn_print(mmvn, logf, TRUE, FALSE);
+        if (data->type == LOWR || data->type == DIAG) {
+          for (j = 0; j < sigmapar->size; j++)
+            fprintf(logf, "%f\t", vec_get(sigmapar, j));
+        }
+      }
+      if (data->type == CONST || data->type == DIST) {
         for (j = 0; j < sigmapar->size; j++)
           fprintf(logf, "%f\t", vec_get(sigmapar, j));
-        for (j = 0; j < n_nuisance_params; j++)
-          fprintf(logf, "%f\t", nj_nuis_param_get(mod, data, j));
       }
+      for (j = 0; j < n_nuisance_params; j++)
+        fprintf(logf, "%f\t", nj_nuis_param_get(mod, data, j));
 
       fprintf(logf, "\n");
     }
@@ -385,11 +396,9 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn, int nminibatch,
             bestt + 1, bestelb, bestll, best_lprior, bestkld, bestpenalty);
     if (data->migtable != NULL)
       fprintf(logf, ", MIGLL: %.2f", bestmigll);
-    if (log_all) {
-      for (j = 0; j < n_nuisance_params; j++) /* print these also if available */
-        fprintf(logf, ", %s: %.4f", nj_get_nuisance_param_name(mod, data, j),
-                nj_nuis_param_get(mod, data, j));
-    }
+    for (j = 0; j < n_nuisance_params; j++) /* print these also if available */
+      fprintf(logf, ", %s: %.4f", nj_get_nuisance_param_name(mod, data, j),
+        nj_nuis_param_get(mod, data, j));
     fprintf(logf, "\n");
   }
 
