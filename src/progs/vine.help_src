@@ -63,7 +63,12 @@ MAIN OPTIONS:
         substitution models only (not CRISPR).
 	
     --logfile, -l <logfile.txt>
-        Output detailed log for variational inference to specified file
+        Output log with core variational inference metrics to specified
+        file.
+
+    --log-all, -a    
+        (for use with --logfile) Include full set of parameter estimates in
+        logfile.
 
     --silent, -X
         Omit updates on progress to terminal.

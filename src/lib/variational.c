@@ -34,7 +34,7 @@
 void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn, int nminibatch,
                         double learnrate, int nbatches_conv, int min_nbatches,
                         CovarData *data, FILE *logf,
-                        unsigned int silent) {
+                        unsigned int silent, unsigned int log_all) {
 
   Vector *kldgrad, *avegrad, *m, *m_prev, *v, *v_prev,
     *best_mu, *best_sigmapar, *rescaledgrad, *sparsitygrad = NULL, 
@@ -97,14 +97,21 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn, int nminibatch,
       fprintf(logf, "subsamp\treuse\tgradnorm\tclip\t");
     if (data->migtable != NULL)
       fprintf(logf, "mig_ll\t");
-    for (j = 0; j < fulld; j++)
-      fprintf(logf, "mu.%d\t", j);
-    for (j = 0; j < sigmapar->size; j++)
-      fprintf(logf, "sigma.%d\t", j);
+    if (log_all) {
+      for (j = 0; j < fulld; j++)
+        fprintf(logf, "mu.%d\t", j);
+      if (data->type == LOWR || data->type == DIAG) {
+        for (j = 0; j < sigmapar->size; j++)
+          fprintf(logf, "sigma.%d\t", j);
+      }
+    }
+    if (data->type == CONST || data->type == DIST) {
+      for (j = 0; j < sigmapar->size; j++)
+        fprintf(logf, "sigma.%d\t", j);
+    }
     for (j = 0; j < n_nuisance_params; j++)
       fprintf(logf, "%s\t", nj_get_nuisance_param_name(mod, data, j));
     fprintf(logf, "\n");
-
   }
 
   /* initialize moments for Adam algorithm */
@@ -344,9 +351,17 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn, int nminibatch,
                 data->reuse_subsamp, sm->grad_norm, clipped);
       if (data->migtable != NULL) 
         fprintf(logf, "%f\t", avemigll); 
-      mmvn_print(mmvn, logf, TRUE, FALSE);
-      for (j = 0; j < sigmapar->size; j++)
-        fprintf(logf, "%f\t", vec_get(sigmapar, j));
+      if (log_all) {
+        mmvn_print(mmvn, logf, TRUE, FALSE);
+        if (data->type == LOWR || data->type == DIAG) {
+          for (j = 0; j < sigmapar->size; j++)
+            fprintf(logf, "%f\t", vec_get(sigmapar, j));
+        }
+      }
+      if (data->type == CONST || data->type == DIST) {
+        for (j = 0; j < sigmapar->size; j++)
+          fprintf(logf, "%f\t", vec_get(sigmapar, j));
+      }
       for (j = 0; j < n_nuisance_params; j++)
         fprintf(logf, "%f\t", nj_nuis_param_get(mod, data, j));
 
@@ -383,7 +398,7 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn, int nminibatch,
       fprintf(logf, ", MIGLL: %.2f", bestmigll);
     for (j = 0; j < n_nuisance_params; j++) /* print these also if available */
       fprintf(logf, ", %s: %.4f", nj_get_nuisance_param_name(mod, data, j),
-              nj_nuis_param_get(mod, data, j));
+        nj_nuis_param_get(mod, data, j));
     fprintf(logf, "\n");
   }
 
@@ -636,4 +651,3 @@ void nj_set_entropy_grad_LOWR(Vector *entgrad, multi_MVN *mmvn) {
 
   mat_free(Rgrad);
 }
-

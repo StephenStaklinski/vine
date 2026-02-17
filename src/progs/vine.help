@@ -1,4 +1,4 @@
-char HELP[14124] = "\nPROGRAM: vine [Variational Inference with Node Embedding]\n\
+char HELP[14269] = "\nPROGRAM: vine [Variational Inference with Node Embedding]\n\
 \n\
 USAGE: vine [OPTIONS] alignment.fa > trees.nwk\n\
 \n\
@@ -63,7 +63,12 @@ MAIN OPTIONS:\n\
         substitution models only (not CRISPR).\n\
 	\n\
     --logfile, -l <logfile.txt>\n\
-        Output detailed log for variational inference to specified file\n\
+        Output log with core variational inference metrics to specified\n\
+        file.\n\
+\n\
+    --log-all, -a    \n\
+        (for use with --logfile) Include full set of parameter estimates in\n\
+        logfile.\n\
 \n\
     --silent, -X\n\
         Omit updates on progress to terminal.\n\
