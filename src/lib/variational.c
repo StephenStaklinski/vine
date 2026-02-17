@@ -34,7 +34,7 @@
 void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn, int nminibatch,
                         double learnrate, int nbatches_conv, int min_nbatches,
                         CovarData *data, FILE *logf,
-                        unsigned int silent, unsigned int minimal_log) {
+                        unsigned int silent, unsigned int log_all) {
 
   Vector *kldgrad, *avegrad, *m, *m_prev, *v, *v_prev,
     *best_mu, *best_sigmapar, *rescaledgrad, *sparsitygrad = NULL, 
@@ -97,7 +97,7 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn, int nminibatch,
       fprintf(logf, "subsamp\treuse\tgradnorm\tclip\t");
     if (data->migtable != NULL)
       fprintf(logf, "mig_ll\t");
-    if (!minimal_log) {
+    if (log_all) {
       for (j = 0; j < fulld; j++)
         fprintf(logf, "mu.%d\t", j);
       for (j = 0; j < sigmapar->size; j++)
@@ -346,7 +346,7 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn, int nminibatch,
                 data->reuse_subsamp, sm->grad_norm, clipped);
       if (data->migtable != NULL) 
         fprintf(logf, "%f\t", avemigll); 
-      if (!minimal_log) {
+      if (log_all) {
         mmvn_print(mmvn, logf, TRUE, FALSE);
         for (j = 0; j < sigmapar->size; j++)
           fprintf(logf, "%f\t", vec_get(sigmapar, j));
@@ -385,7 +385,7 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn, int nminibatch,
             bestt + 1, bestelb, bestll, best_lprior, bestkld, bestpenalty);
     if (data->migtable != NULL)
       fprintf(logf, ", MIGLL: %.2f", bestmigll);
-    if (!minimal_log) {
+    if (log_all) {
       for (j = 0; j < n_nuisance_params; j++) /* print these also if available */
         fprintf(logf, ", %s: %.4f", nj_get_nuisance_param_name(mod, data, j),
                 nj_nuis_param_get(mod, data, j));

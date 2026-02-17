@@ -76,7 +76,7 @@ int main(int argc, char *argv[]) {
                mvn_dump = FALSE, natural_grad = FALSE, is_crispr = FALSE,
                ultrametric = FALSE, radial_flow = FALSE, planar_flow = FALSE,
                use_taylor = TRUE, had_dups = FALSE, silent = FALSE,
-               minimal_log = FALSE;
+               log_all = FALSE;
   MSA *msa = NULL;
   enum covar_type covar_param = CONST;
   char *alphabet = "ACGT";
@@ -148,14 +148,14 @@ int main(int argc, char *argv[]) {
     {"primary", 1, 0, '1'},
     {"dgamma", 1, 0, 'K'},
     {"montecarlo", 0, 0, 'y'},
-    {"minimal_log", 0, 0, 'q'},
+    {"log-all", 0, 0, 'a'},
     {"version", 0, 0, 'x'},
     {"silent", 0, 0, 'X'},
     {"help", 0, 0, 'h'},
     {0, 0, 0, 0}
   };
 
-  while ((c = getopt_long(argc, argv, "0:1:b:B:c:d:D:egG:hHi:FZj:JkK:l:L:m:M:n:No:v:r:Rt:T:Vw:W:S:s:CY:yPp:qXx", long_opts, &opt_idx)) != -1) {
+  while ((c = getopt_long(argc, argv, "0:1:ab:B:c:d:D:egG:hHi:FZj:JkK:l:L:m:M:n:No:v:r:Rt:T:Vw:W:S:s:CY:yPp:Xx", long_opts, &opt_idx)) != -1) {
     switch (c) {
     case 'b':
       batchsize = atoi(optarg);
@@ -339,8 +339,8 @@ int main(int argc, char *argv[]) {
     case 'X':
       silent = TRUE;
       break;
-    case 'q':
-      minimal_log = TRUE;
+    case 'a':
+      log_all = TRUE;
       break;
     case 'x':
       printf("VINE version %s\n", VINE_VERSION);
@@ -609,7 +609,7 @@ int main(int argc, char *argv[]) {
 
       nj_variational_inf(mod, mmvn, batchsize, learnrate,
                          niter_conv, min_iter, 
-                         covar_data, logfile, silent, minimal_log);
+                         covar_data, logfile, silent, log_all);
 
       if (had_dups == TRUE && !silent)
         fprintf(stderr, "Sampling trees and re-adding duplicate cells...\n");

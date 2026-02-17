@@ -63,11 +63,11 @@ MAIN OPTIONS:
         substitution models only (not CRISPR).
 	
     --logfile, -l <logfile.txt>
-        Output detailed log for variational inference to specified file
+        Output log with core variational inference metrics to specified
+        file.
 
-    --minimal_log, -q
-        With --logfile, write only core metrics (for example ll and ELBO)
-        and omit per-parameter values.
+    --log-all, -a
+        With --logfile, also write all parameter values.
 
     --silent, -X
         Omit updates on progress to terminal.
