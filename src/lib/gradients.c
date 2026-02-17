@@ -234,11 +234,11 @@ void nj_rescale_grad(Vector *grad, Vector *rsgrad, multi_MVN *mmvn, CovarData *d
     }
     else { /* variance gradients */
       if (data->type == CONST)
-        g *= 2/(mmvn->n * mmvn->d); /* assumes variance is exp(parameter) */
+        g *= 2.0/(mmvn->n * mmvn->d); /* assumes variance is exp(parameter) */
       else if (data->type == DIAG)
-        g *= 2; /* assumes variance is exp(parameter) */
+        g *= 2.0; /* assumes variance is exp(parameter) */
       else if (data->type == DIST)
-        g *= 2/(mmvn->n-1); /* assumes variance is exp(parameter) */
+        g *= 2.0/(mmvn->n-1); /* assumes variance is exp(parameter) */
       else
         break; /* handle LOWR case below */
     }
