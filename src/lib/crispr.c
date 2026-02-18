@@ -236,6 +236,8 @@ void cpr_deduplicate(CrisprMutTable *M, struct mgtab *mg) {
   String *genostr = str_new(M->nsites * 10);
   List *newcellnames = lst_new_ptr(M->ncells);
   List *newcellmuts = lst_new_ptr(M->ncells);
+  List *new_mg_cellnames = (mg != NULL) ? lst_new_ptr(M->ncells) : NULL;
+  List *new_mg_states = (mg != NULL) ? lst_new_int(M->ncells) : NULL;
 
   assert(M->dupnames == NULL); /* up to caller to ensure this is the case */
   M->dupnames = malloc(M->ncells * sizeof(List *));
@@ -248,6 +250,10 @@ void cpr_deduplicate(CrisprMutTable *M, struct mgtab *mg) {
       hsh_put_int(seen, genostr->chars, lst_size(newcellnames));
       lst_push_ptr(newcellnames, lst_get_ptr(M->cellnames, i));
       lst_push_ptr(newcellmuts, lst_get_ptr(M->cellmuts, i));
+      if (mg != NULL) {
+        lst_push_ptr(new_mg_cellnames, str_dup(lst_get_ptr(mg->cellnames, i)));
+        lst_push_int(new_mg_states, lst_get_int(mg->states, i));
+      }
     }
     else {
       if (M->dupnames[prevcell] == NULL)
@@ -264,6 +270,14 @@ void cpr_deduplicate(CrisprMutTable *M, struct mgtab *mg) {
   M->cellmuts = newcellmuts;
   M->ncells = lst_size(M->cellnames);
   M->dupnames = realloc(M->dupnames, M->ncells * sizeof(List *));
+  if (mg != NULL) {
+    lst_free_strings(mg->cellnames);
+    lst_free(mg->cellnames);
+    lst_free(mg->states);
+    mg->cellnames = new_mg_cellnames;
+    mg->states = new_mg_states;
+    mg->ncells = lst_size(mg->cellnames);
+  }
   str_free(genostr);
   hsh_free(seen);
 }
@@ -1396,7 +1410,8 @@ double cpr_ll_parallel(CrisprMutModel *cprmod, Vector *branchgrad,
    with a binary caterpillar subtree containing the original leaf plus
    all duplicates, connected by zero-length branches (a polytomy
    within the binary tree constraint). */
-void cpr_add_dup_leaves(TreeNode *tree, CrisprMutTable *M) {
+void cpr_add_dup_leaves(TreeNode *tree, CrisprMutTable *M,
+                        struct mgtab *mg) {
   int i, j, idx;
   TreeNode *leaf, *newint, *newleaf, *subtree;
 
@@ -1438,6 +1453,9 @@ void cpr_add_dup_leaves(TreeNode *tree, CrisprMutTable *M) {
     TreeNode *parent = leaf->parent;
     double orig_dparent = leaf->dparent;
 
+    /* tissue state of the representative (duplicates share the same state) */
+    int rep_state = (mg != NULL) ? lst_get_int(mg->states, cell_idx[i]) : -1;
+
     /* start with original leaf and first dup as siblings */
     leaf->dparent = 0;
 
@@ -1451,6 +1469,13 @@ void cpr_add_dup_leaves(TreeNode *tree, CrisprMutTable *M) {
     leaf->parent = subtree;
     newleaf->parent = subtree;
     subtree->dparent = 0;
+
+    /* add duplicate to mutation table and migration table */
+    lst_push_ptr(M->cellnames, str_dup(lst_get_ptr(dups, 0)));
+    if (mg != NULL) {
+      lst_push_ptr(mg->cellnames, str_dup(lst_get_ptr(dups, 0)));
+      lst_push_int(mg->states, rep_state);
+    }
 
     /* wrap in additional internal nodes for remaining dups */
     for (j = 1; j < ndups; j++) {
@@ -1466,6 +1491,13 @@ void cpr_add_dup_leaves(TreeNode *tree, CrisprMutTable *M) {
       newint->dparent = 0;
 
       subtree = newint;
+
+      /* add duplicate to mutation table and migration table */
+      lst_push_ptr(M->cellnames, str_dup(lst_get_ptr(dups, j)));
+      if (mg != NULL) {
+        lst_push_ptr(mg->cellnames, str_dup(lst_get_ptr(dups, j)));
+        lst_push_int(mg->states, rep_state);
+      }
     }
 
     /* attach subtree in place of original leaf */
@@ -1479,6 +1511,12 @@ void cpr_add_dup_leaves(TreeNode *tree, CrisprMutTable *M) {
 
   sfree(to_expand);
   sfree(cell_idx);
+
+  /* update migration table count (M->ncells is NOT updated because
+     M->cellmuts and M->dupnames still have only K entries; M->cellnames
+     was extended only so cpr_build_seq_idx can find duplicate names) */
+  if (mg != NULL)
+    mg->ncells = lst_size(mg->cellnames);
 
   /* rebuild tree metadata */
   tree->nnodes += total_added;
