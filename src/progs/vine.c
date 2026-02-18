@@ -628,11 +628,26 @@ int main(int argc, char *argv[]) {
       else /* otherwise just sample directly from approx posterior */
         trees = nj_var_sample(nsamples, mmvn, covar_data, names, NULL);
 
+      /* expand all sampled trees and rebuild msa_seq_idx once; the
+         node ID to cell name mapping is fixed across trees */
+      if (had_dups == TRUE) {
+        for (i = 0; i < nsamples; i++)
+          cpr_add_dup_leaves(lst_get_ptr(trees, i), crispr_mod->mut);
+        if (crispr_mod->mod->msa_seq_idx != NULL) {
+          sfree(crispr_mod->mod->msa_seq_idx);
+          crispr_mod->mod->msa_seq_idx = NULL;
+        }
+        /* temporarily set mod->tree to an expanded tree so
+           cpr_build_seq_idx can map duplicate leaf names; restore
+           afterward so tm_free sees the original tree size for P */
+        TreeNode *saved_tree = crispr_mod->mod->tree;
+        crispr_mod->mod->tree = lst_get_ptr(trees, 0);
+        cpr_build_seq_idx(crispr_mod->mod, crispr_mod->mut);
+        crispr_mod->mod->tree = saved_tree;
+      }
+
       for (i = 0; i < nsamples; i++) {
         TreeNode *t = (TreeNode *)lst_get_ptr(trees, i);
-
-        if (had_dups == TRUE)
-          cpr_add_dup_leaves(t, crispr_mod->mut); /* add back in duplicate leaves if needed */
 
         tr_print(stdout, t, TRUE);
 
@@ -640,16 +655,6 @@ int main(int argc, char *argv[]) {
         if (graphsfile != NULL || nexusfile != NULL) {
           if (i == 0 && !silent)
             fprintf(stderr, "Sampling cell states...\n");
-
-          if (had_dups == TRUE) {
-            /* msa_seq_idx was built for the deduped tree; rebuild for
-               the expanded tree so restored leaves can be found */
-            if (crispr_mod->mod->msa_seq_idx != NULL) {
-              sfree(crispr_mod->mod->msa_seq_idx);
-              crispr_mod->mod->msa_seq_idx = NULL;
-            }
-            crispr_mod->mod->tree = t;
-          }
 
           if (migstates_lst == NULL) migstates_lst = lst_new_ptr(nsamples);
           List *states = lst_new_ptr(t->nnodes);
