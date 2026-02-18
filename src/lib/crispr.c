@@ -1527,3 +1527,110 @@ void cpr_expand_tables_for_dups(CrisprMutTable *M, struct mgtab *mg) {
   if (mg != NULL)
     mg->ncells = lst_size(mg->cellnames);
 }
+
+/* Diagnostic function to verify consistency of mutation and migration
+   tables through the dedup/restore cycle.  Gated by CHECK_DEDUP env
+   var.  The 'stage' string is printed for context.  Checks:
+   1. M->cellnames and mg->cellnames have same size and same entries
+   2. mg->states values are valid (0..mg->nstates-1)
+   3. If after expansion, duplicate cells have the same tissue state
+      as their representative */
+void cpr_check_dedup_tables(CrisprMutTable *M, MigTable *mg,
+                            const char *stage) {
+  int i, j;
+  if (getenv("CHECK_DEDUP") == NULL) return;
+
+  fprintf(stderr, "[CHECK_DEDUP] %s\n", stage);
+
+  /* check 1: sizes match */
+  int msize = lst_size(M->cellnames);
+  fprintf(stderr, "  M->ncells=%d  lst_size(M->cellnames)=%d", M->ncells, msize);
+  if (mg != NULL) {
+    int mgsize = lst_size(mg->cellnames);
+    int mgstsize = lst_size(mg->states);
+    fprintf(stderr, "  mg->ncells=%d  lst_size(mg->cellnames)=%d  lst_size(mg->states)=%d",
+            mg->ncells, mgsize, mgstsize);
+    if (mgsize != msize)
+      fprintf(stderr, "\n  ** MISMATCH: M->cellnames size %d != mg->cellnames size %d", msize, mgsize);
+    if (mgstsize != mgsize)
+      fprintf(stderr, "\n  ** MISMATCH: mg->cellnames size %d != mg->states size %d", mgsize, mgstsize);
+  }
+  fprintf(stderr, "\n");
+
+  /* check 2: cellnames match entry by entry */
+  if (mg != NULL) {
+    int n = msize < lst_size(mg->cellnames) ? msize : lst_size(mg->cellnames);
+    int mismatches = 0;
+    for (i = 0; i < n; i++) {
+      String *mname = lst_get_ptr(M->cellnames, i);
+      String *mgname = lst_get_ptr(mg->cellnames, i);
+      if (str_compare(mname, mgname) != 0) {
+        if (mismatches < 5)
+          fprintf(stderr, "  ** NAME MISMATCH at index %d: M='%s' mg='%s'\n",
+                  i, mname->chars, mgname->chars);
+        mismatches++;
+      }
+    }
+    if (mismatches > 5)
+      fprintf(stderr, "  ** ... %d total name mismatches\n", mismatches);
+    else if (mismatches == 0)
+      fprintf(stderr, "  cellnames match OK (%d entries)\n", n);
+  }
+
+  /* check 3: mg->states values are valid */
+  if (mg != NULL) {
+    int bad = 0;
+    for (i = 0; i < lst_size(mg->states); i++) {
+      int st = lst_get_int(mg->states, i);
+      if (st < 0 || st >= mg->nstates) {
+        if (bad < 3)
+          fprintf(stderr, "  ** INVALID state %d at index %d (nstates=%d)\n",
+                  st, i, mg->nstates);
+        bad++;
+      }
+    }
+    if (bad == 0)
+      fprintf(stderr, "  mg->states all valid (0..%d)\n", mg->nstates - 1);
+  }
+
+  /* check 4: if dupnames exist, verify dup tissue states match representative.
+     After dedup but before expansion, dups will not be in mg->cellnames
+     (expected).  After expansion, they should be present with matching states. */
+  if (M->dupnames != NULL && mg != NULL) {
+    Hashtable *namehash = hsh_new(lst_size(mg->cellnames) * 2);
+    for (i = 0; i < lst_size(mg->cellnames); i++) {
+      String *s = lst_get_ptr(mg->cellnames, i);
+      hsh_put_int(namehash, s->chars, i);
+    }
+    int checked = 0, bad = 0, not_found = 0;
+    for (i = 0; i < M->ncells; i++) {
+      if (M->dupnames[i] == NULL) continue;
+      int rep_state = lst_get_int(mg->states, i);
+      List *dups = M->dupnames[i];
+      for (j = 0; j < lst_size(dups); j++) {
+        String *dname = lst_get_ptr(dups, j);
+        int idx = hsh_get_int(namehash, dname->chars);
+        if (idx == -1) {
+          not_found++;
+        }
+        else {
+          int dup_state = lst_get_int(mg->states, idx);
+          if (dup_state != rep_state) {
+            fprintf(stderr, "  ** DUP STATE MISMATCH: rep '%s' state=%d, dup '%s' state=%d\n",
+                    ((String*)lst_get_ptr(M->cellnames, i))->chars, rep_state,
+                    dname->chars, dup_state);
+            bad++;
+          }
+        }
+        checked++;
+      }
+    }
+    if (not_found > 0)
+      fprintf(stderr, "  %d dup name(s) not yet in mg->cellnames (expected before expansion)\n", not_found);
+    if (bad == 0 && checked > 0 && not_found == 0)
+      fprintf(stderr, "  dup tissue states match representatives OK (%d dups checked)\n", checked);
+    else if (checked == 0 && not_found == 0)
+      fprintf(stderr, "  no duplicates to check\n");
+    hsh_free(namehash);
+  }
+}

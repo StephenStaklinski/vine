@@ -164,4 +164,7 @@ void cpr_free_model(CrisprMutModel *cprmod);
 
 void cpr_update_model(CrisprMutModel *cprmod);
 
+void cpr_check_dedup_tables(CrisprMutTable *M, struct mgtab *mg,
+                            const char *stage);
+
 #endif

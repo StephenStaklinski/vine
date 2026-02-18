@@ -411,8 +411,12 @@ int main(int argc, char *argv[]) {
       if (migtable != NULL)  /* do this before deduplication */
         mig_check_table(migtable, crispr_muts); /* ensure same cell names */
 
+      cpr_check_dedup_tables(crispr_muts, migtable, "after mig_check_table (pre-dedup)");
+
       cpr_deduplicate(crispr_muts, migtable); /* collapse identical genotypes; modifies
                                        crispr_muts in place */
+      cpr_check_dedup_tables(crispr_muts, migtable, "after cpr_deduplicate");
+
       if (crispr_muts->ncells < ntips) {
         had_dups = TRUE;
         if (!silent) fprintf(stderr, "Collapsed %d duplicates; %d unique genotypes remain...\n",
@@ -522,6 +526,7 @@ int main(int argc, char *argv[]) {
     if (nj_only == TRUE) { /* just print in this case */
       if (had_dups == TRUE) {
         cpr_expand_tables_for_dups(crispr_muts, migtable);
+        cpr_check_dedup_tables(crispr_muts, migtable, "after cpr_expand_tables_for_dups (NJ path)");
         cpr_add_dup_leaves(tree, crispr_muts);
       }
       if (!silent) fprintf(stderr, "Outputting NJ tree...\n");
@@ -619,8 +624,10 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Sampling trees...\n");
 
       /* expand mutation and migration tables once for duplicate names */
-      if (had_dups == TRUE)
+      if (had_dups == TRUE) {
         cpr_expand_tables_for_dups(crispr_mod->mut, migtable);
+        cpr_check_dedup_tables(crispr_mod->mut, migtable, "after cpr_expand_tables_for_dups (VI path)");
+      }
 
       if (rejection_sampling == TRUE)
         trees = nj_var_sample_rejection(nsamples, mmvn, covar_data, mod, logfile);
@@ -628,26 +635,35 @@ int main(int argc, char *argv[]) {
       else /* otherwise just sample directly from approx posterior */
         trees = nj_var_sample(nsamples, mmvn, covar_data, names, NULL);
 
-      /* expand all sampled trees and rebuild msa_seq_idx once; the
-         node ID to cell name mapping is fixed across trees */
+      /* expand all sampled trees; msa_seq_idx must be rebuilt per tree
+         because caterpillar node IDs vary across trees (the global
+         idcounter advances with each expansion and tr_set_nnodes
+         renumbers, so the same dup leaf may get a different ID in
+         different sampled trees) */
       if (had_dups == TRUE) {
         for (i = 0; i < nsamples; i++)
           cpr_add_dup_leaves(lst_get_ptr(trees, i), crispr_mod->mut);
+        /* invalidate msa_seq_idx so it is rebuilt per-tree below */
         if (crispr_mod->mod->msa_seq_idx != NULL) {
           sfree(crispr_mod->mod->msa_seq_idx);
           crispr_mod->mod->msa_seq_idx = NULL;
         }
-        /* temporarily set mod->tree to an expanded tree so
-           cpr_build_seq_idx can map duplicate leaf names; restore
-           afterward so tm_free sees the original tree size for P */
-        TreeNode *saved_tree = crispr_mod->mod->tree;
-        crispr_mod->mod->tree = lst_get_ptr(trees, 0);
-        cpr_build_seq_idx(crispr_mod->mod, crispr_mod->mut);
-        crispr_mod->mod->tree = saved_tree;
       }
 
       for (i = 0; i < nsamples; i++) {
         TreeNode *t = (TreeNode *)lst_get_ptr(trees, i);
+
+        /* rebuild msa_seq_idx for this tree's expanded leaf IDs */
+        if (had_dups == TRUE) {
+          if (crispr_mod->mod->msa_seq_idx != NULL) {
+            sfree(crispr_mod->mod->msa_seq_idx);
+            crispr_mod->mod->msa_seq_idx = NULL;
+          }
+          TreeNode *saved_tree = crispr_mod->mod->tree;
+          crispr_mod->mod->tree = t;
+          cpr_build_seq_idx(crispr_mod->mod, crispr_mod->mut);
+          crispr_mod->mod->tree = saved_tree;
+        }
 
         tr_print(stdout, t, TRUE);
 
