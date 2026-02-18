@@ -520,8 +520,10 @@ int main(int argc, char *argv[]) {
     tree = nj_inf(D, names, NULL, NULL, covar_data);
 
     if (nj_only == TRUE) { /* just print in this case */
-      if (had_dups == TRUE)
-        cpr_add_dup_leaves(tree, crispr_muts, migtable); /* add back in duplicate leaves if needed */
+      if (had_dups == TRUE) {
+        cpr_expand_tables_for_dups(crispr_muts, migtable);
+        cpr_add_dup_leaves(tree, crispr_muts);
+      }
       if (!silent) fprintf(stderr, "Outputting NJ tree...\n");
       tr_print(stdout, tree, TRUE);
     }
@@ -616,7 +618,11 @@ int main(int argc, char *argv[]) {
       else if (!silent)
         fprintf(stderr, "Sampling trees...\n");
 
-      if (rejection_sampling == TRUE) 
+      /* expand mutation and migration tables once for duplicate names */
+      if (had_dups == TRUE)
+        cpr_expand_tables_for_dups(crispr_mod->mut, migtable);
+
+      if (rejection_sampling == TRUE)
         trees = nj_var_sample_rejection(nsamples, mmvn, covar_data, mod, logfile);
 
       else /* otherwise just sample directly from approx posterior */
@@ -626,7 +632,7 @@ int main(int argc, char *argv[]) {
         TreeNode *t = (TreeNode *)lst_get_ptr(trees, i);
 
         if (had_dups == TRUE)
-          cpr_add_dup_leaves(t, crispr_mod->mut, migtable); /* add back in duplicate leaves if needed */
+          cpr_add_dup_leaves(t, crispr_mod->mut); /* add back in duplicate leaves if needed */
 
         tr_print(stdout, t, TRUE);
 
@@ -668,7 +674,7 @@ int main(int argc, char *argv[]) {
         mmvn_save_mu(mmvn, mu_full);
         TreeNode *t = nj_mean(mu_full, names, covar_data);
         if (had_dups == TRUE)
-          cpr_add_dup_leaves(t, crispr_mod->mut, migtable); /* add back in duplicate leaves if needed */
+          cpr_add_dup_leaves(t, crispr_mod->mut); /* add back in duplicate leaves if needed */
         tr_print(postmeanfile, t, TRUE);
         vec_free(mu_full);
       }
