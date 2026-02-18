@@ -248,7 +248,7 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn, int nminibatch,
         data->crispr_mod->mig_warmup = TRUE;
       } else {
         if (t == CPR_MIG_WARMUP_ITERS && !silent)
-          fprintf(stderr, "Warmup complete; enabling migration model.\n");
+          fprintf(stderr, "Warmup complete; enabling migration model...\n");
         data->crispr_mod->mig_warmup = FALSE;
       }
     }
