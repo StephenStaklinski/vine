@@ -27,6 +27,10 @@
 #include <hutchinson.h>
 #include <version.h>
 
+/* number of warmup iterations to run with migration model disabled;
+   allows tree topology to converge before migration inference activates */
+#define CPR_MIG_WARMUP_ITERS 150
+
 /* optimize variational model by stochastic gradient ascent using the
    Adam algorithm.  Takes initial tree model and alignment and
    distance matrix, dimensionality of Euclidean space to work in.
@@ -234,6 +238,21 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn, int nminibatch,
       taylor_stash = NULL;
     }
     
+    /* migration warmup: disable migration for first CPR_MIG_WARMUP_ITERS
+       iterations to let tree topology converge before migration activates */
+    if (data->crispr_mod != NULL && data->migtable != NULL) {
+      if (t < CPR_MIG_WARMUP_ITERS) {
+        if (t == 0 && !silent)
+          fprintf(stderr, "Running %d warmup iterations without migration "
+                  "model...\n", CPR_MIG_WARMUP_ITERS);
+        data->crispr_mod->mig_warmup = TRUE;
+      } else {
+        if (t == CPR_MIG_WARMUP_ITERS && !silent)
+          fprintf(stderr, "Warmup complete; enabling migration model.\n");
+        data->crispr_mod->mig_warmup = FALSE;
+      }
+    }
+
     if (data->taylor != NULL) {
       avell = nj_elbo_hybrid(mod, mmvn, data, nminibatch, avegrad,
                              ave_nuis_grad, &ave_lprior, &avemigll);

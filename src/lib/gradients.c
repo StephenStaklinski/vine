@@ -538,8 +538,9 @@ double nj_dL_dx_smartest(Vector *x, Vector *dL_dx, TreeModel *mod,
             cm->deriv_leading_t, (ll_plus - ll_minus) / (2*eps));
   }
 
-  /* also get migration log likelihood if needed */
-  if (data->migtable != NULL) {
+  /* also get migration log likelihood if needed (skip during warmup) */
+  if (data->migtable != NULL &&
+      !(data->crispr_mod != NULL && data->crispr_mod->mig_warmup)) {
     *migll = mig_compute_log_likelihood(mod, data->migtable, data->crispr_mod,
                                         migbranchgrad);
     vec_plus_eq(dL_dt, migbranchgrad);

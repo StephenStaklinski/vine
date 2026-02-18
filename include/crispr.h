@@ -67,6 +67,8 @@ typedef struct {
                              len */
   unsigned int zero_likl; /* likelihood evaluated to zero; typically
                              indicates degenerate tree */
+  unsigned int mig_warmup; /* if nonzero, skip migration likelihood and
+                              zero migration gradients during warmup phase */
   int nthreads; /* number of threads to use in
                    parallel likelihood calculations */
 } CrisprMutModel;

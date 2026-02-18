@@ -179,8 +179,10 @@ void nj_update_nuis_grad(TreeModel *mod, CovarData *data, Vector *nuis_grad) {
   }
 
   if (data->migtable != NULL) {
+    /* zero migration gradients during warmup phase */
+    double mig_scale = (data->crispr_mod != NULL && data->crispr_mod->mig_warmup) ? 0.0 : 1.0;
     for (i = 0; i < data->migtable->deriv_gtr->size; i++)
-      vec_set(nuis_grad, idx++, vec_get(data->migtable->deriv_gtr, i));
+      vec_set(nuis_grad, idx++, mig_scale * vec_get(data->migtable->deriv_gtr, i));
   }
 
   assert(idx == nuis_grad->size);
