@@ -626,8 +626,8 @@ int main(int argc, char *argv[]) {
         TreeNode *t = (TreeNode *)lst_get_ptr(trees, i);
 
         if (had_dups == TRUE)
-          cpr_add_dup_leaves(t, crispr_muts, migtable); /* add back in duplicate leaves if needed */
-        
+          cpr_add_dup_leaves(t, crispr_mod->mut, migtable); /* add back in duplicate leaves if needed */
+
         tr_print(stdout, t, TRUE);
 
         /* in these cases we need to sample cell states for each tree */
@@ -668,7 +668,7 @@ int main(int argc, char *argv[]) {
         mmvn_save_mu(mmvn, mu_full);
         TreeNode *t = nj_mean(mu_full, names, covar_data);
         if (had_dups == TRUE)
-          cpr_add_dup_leaves(t, crispr_muts, migtable); /* add back in duplicate leaves if needed */
+          cpr_add_dup_leaves(t, crispr_mod->mut, migtable); /* add back in duplicate leaves if needed */
         tr_print(postmeanfile, t, TRUE);
         vec_free(mu_full);
       }
