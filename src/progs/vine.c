@@ -26,7 +26,7 @@
 #include <phast/subst_mods.h>
 #include <phast/sufficient_stats.h>
 #include <mvn.h>
-#include <var_resampling.h>
+#include <mcmc.h>
 #include <tree_prior.h>
 #include <migration.h>
 #include <multiDAG.h>
@@ -40,6 +40,7 @@
 #define DEFAULT_MIN_ITER 200
 #define DEFAULT_KAPPA 4
 #define DEFAULT_RANK 3
+#define DEFAULT_MCMC_THIN 10
 
 /* default dimensionality is a linear function of log number of taxa */
 #define DEFAULT_DIM_INTERCEPT 3.25
@@ -70,9 +71,10 @@ int main(int argc, char *argv[]) {
   int opt_idx, i, ntips = 0, nsamples = DEFAULT_NSAMPLES, dim = -1,
                   batchsize = DEFAULT_BATCHSIZE,
                   niter_conv = DEFAULT_NITER_CONV, min_iter = DEFAULT_MIN_ITER,
-                  rank = DEFAULT_RANK, nthreads = 1, dgamma_cats = 1;
+                  rank = DEFAULT_RANK, nthreads = 1, dgamma_cats = 1,
+                  mcmc_thin = DEFAULT_MCMC_THIN;
   unsigned int nj_only = FALSE, random_start = FALSE, hyperbolic = FALSE,
-               embedding_only = FALSE, rejection_sampling = FALSE,
+               embedding_only = FALSE, mcmc = FALSE,
                mvn_dump = FALSE, natural_grad = FALSE, is_crispr = FALSE,
                ultrametric = FALSE, radial_flow = FALSE, planar_flow = FALSE,
                use_taylor = TRUE, had_dups = FALSE, silent = FALSE,
@@ -116,7 +118,7 @@ int main(int argc, char *argv[]) {
     {"hky85", 0, 0, 'k'}, 
     {"gtr", 0, 0, 'g'}, 
     {"hyperbolic", 0, 0, 'H'},
-    {"rejection-sampling", 0, 0, 'J'},
+    {"mcmc", 0, 0, 'J'},
     {"logfile", 1, 0, 'l'},
     {"mean", 1, 0, 'm'},
     {"miniter", 1, 0, 'M'},
@@ -134,6 +136,7 @@ int main(int argc, char *argv[]) {
     {"covar", 1, 0, 'S'},
     {"tree", 1, 0, 't'},
     {"treemodel", 1, 0, 'T'},
+    {"thin", 1, 0, 'Q'},
     {"upweight-kld", 1, 0, 'U'},
     {"ultrametric", 0, 0, 'C'},
     {"mvn-dump", 0, 0, 'V'},
@@ -205,7 +208,12 @@ int main(int argc, char *argv[]) {
       migtable = mig_read_table(phast_fopen(optarg, "r"));
       break;
     case 'J':
-      rejection_sampling = TRUE;
+      mcmc = TRUE;
+      break;
+    case 'Q':
+      mcmc_thin = atoi(optarg);
+      if (mcmc_thin <= 0)
+        die("ERROR: --mcmc-thin must be positive\n");
       break;
     case '0':
       nj_only = TRUE;
@@ -629,8 +637,8 @@ int main(int argc, char *argv[]) {
         cpr_check_dedup_tables(crispr_mod->mut, migtable, "after cpr_expand_tables_for_dups (VI path)");
       }
 
-      if (rejection_sampling == TRUE)
-        trees = nj_var_sample_rejection(nsamples, mmvn, covar_data, mod, logfile);
+      if (mcmc == TRUE)
+        trees = nj_var_sample_mcmc(nsamples, mcmc_thin, mmvn, covar_data, mod, logfile);
 
       else /* otherwise just sample directly from approx posterior */
         trees = nj_var_sample(nsamples, mmvn, covar_data, names, NULL);

@@ -13,6 +13,7 @@ add_library(vine_core STATIC
     hutchinson.c
     likelihoods.c
     migration.c
+    mcmc.c
     multi_mvn.c
     multiDAG.c
     mvn.c
@@ -26,7 +27,6 @@ add_library(vine_core STATIC
     taylor.c
     tree_prior.c
     upgma.c
-    var_resampling.c
     variational.c
 )
 

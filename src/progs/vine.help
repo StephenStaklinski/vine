@@ -1,4 +1,4 @@
-char HELP[14269] = "\nPROGRAM: vine [Variational Inference with Node Embedding]\n\
+char HELP[14631] = "\nPROGRAM: vine [Variational Inference with Node Embedding]\n\
 \n\
 USAGE: vine [OPTIONS] alignment.fa > trees.nwk\n\
 \n\
@@ -119,6 +119,18 @@ MAIN OPTIONS:\n\
         frequencies at tips of tree).  Whether distribution is applied\n\
         across all sites or separately for each one depends on\n\
         --crispr-modtype.\n\
+\n\
+    --mcmc, -J\n\
+        Refine final samples by MCMC, to obtain a better approximation of\n\
+        the true posterior distribution.  Sampling is carried out in the\n\
+        embedding space, starting at the mean of the approximate posterior\n\
+        from variational inference.  Warmup and proposal parameters are\n\
+        adaptively determined.\n\
+\n\
+    --thin, ? <interval>    \n\
+        (For use with --mcmc) Thinning interval for MCMC sampling after\n\
+        warmup (default 10).\n\
+\n\
         \n\
 OPTIMIZATION:\n\
     --learnrate, -r <alpha>\n\
@@ -272,10 +284,6 @@ DIAGNOSTICS:\n\
        to evaluate fidelity of various embedding schemes.\n\
 \n\
 EXPERIMENTAL/LITTLE USED:\n\
-    --rejection-sampling, -J\n\
-        Refine final set of samples by rejection sampling, using the full\n\
-        likelihood function.  \n\
-\n\
     --natural-grad, -N\n\
        During stochastic gradient ascent, use approximate\n\
        natural gradient scale by multiplying each gradient by the\n\

@@ -119,6 +119,18 @@ MAIN OPTIONS:
         frequencies at tips of tree).  Whether distribution is applied
         across all sites or separately for each one depends on
         --crispr-modtype.
+
+    --mcmc, -J
+        Refine final samples by MCMC, to obtain a better approximation of
+        the true posterior distribution.  Sampling is carried out in the
+        embedding space, starting at the mean of the approximate posterior
+        from variational inference.  Warmup and proposal parameters are
+        adaptively determined.
+
+    --thin, ? <interval>    
+        (For use with --mcmc) Thinning interval for MCMC sampling after
+        warmup (default 10).
+
         
 OPTIMIZATION:
     --learnrate, -r <alpha>
@@ -272,10 +284,6 @@ DIAGNOSTICS:
        to evaluate fidelity of various embedding schemes.
 
 EXPERIMENTAL/LITTLE USED:
-    --rejection-sampling, -J
-        Refine final set of samples by rejection sampling, using the full
-        likelihood function.  
-
     --natural-grad, -N
        During stochastic gradient ascent, use approximate
        natural gradient scale by multiplying each gradient by the
