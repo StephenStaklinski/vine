@@ -31,21 +31,29 @@ List *nj_var_sample_mcmc(int nsamples, int thin, multi_MVN *mmvn,
   int n = data->nseqs, dim = data->dim, fulld = n * dim;
   int niters = 0, naccept = 0, last_naccept = 0, nsamp = 0;
   unsigned int keep_sampling = TRUE, burnin = TRUE, accept = FALSE;
-  double rho = 0.99, s = 1.0, accrt = 0.0, new_accrt = 0.0; 
+  /* rho chosen so thinned samples have ~50% autocorrelation, giving
+   * ESS >= n/3.  Target: (1 - alpha*(1-rho))^thin = 0.5, solved for rho.
+   * For small thin this may be 0 (independence sampler). */
+  double rho = fmax(0.0, 1.0 - log(2.0) / (thin * TARGET_ACCEPT_RATE));
+
+  /* optimal RW Metropolis scaling: effective z-step = sqrt(1-rho²)*s should
+   * equal 2.38/sqrt(d); solve for s: s_init = 2.38/(sqrt(1-rho²)*sqrt(d)) */
+  double s_init = (rho < 1.0)
+    ? fmin(10.0, 2.38 / (sqrt(1.0 - rho * rho) * sqrt((double)fulld)))
+    : 1.0;
+  double s = s_init, accrt = 0.0, new_accrt = 0.0;
   Vector *mu = vec_new(fulld);
   double nf_logdet;
   mmvn_save_mu(mmvn, mu);
   TreeNode *tree = NULL, *oldtree = NULL;
   List *retval = lst_new_ptr(nsamples);
 
-  if (n >= 250) rho = 0.995; /* more conservative for higher dimensions */
-      
   /* initialize last_lnl based on mean; can we do this below by being clever? */
   double lnl = 0.0, lastlnl = 0.0; /* placeholder */
 
   if (logf != NULL) {
-    fprintf(logf, "### Starting MCMC sampling at posterior mean (burn-in of %d iterations, target acceptance rate %.3f)\n",
-      BURNIN_ITERS, TARGET_ACCEPT_RATE);
+    fprintf(logf, "### Starting MCMC sampling at posterior mean (burn-in of %d iterations, target acceptance rate %.3f, rho=%.4f, s_init=%.4f)\n",
+      BURNIN_ITERS, TARGET_ACCEPT_RATE, rho, s_init);
     fprintf(logf, "## %s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", "iter", "lnl", "prevlnl", "burnin",
             "accept", "block_accrt", "tot_accrt", "rho", "s");
     
@@ -73,11 +81,17 @@ List *nj_var_sample_mcmc(int nsamples, int thin, multi_MVN *mmvn,
     vec_scale(zeta, sqrt(1 - rho * rho));
     vec_plus_eq(zprop, zeta);
 
-    /* propose new x centered on variational mean; param s is tuned
-     * dynamically (below) */
+    /* propose new x centered on variational mean using variational covariance;
+     * param s scales overall step size and is tuned dynamically (below).
+     * For non-LOWR types: x = mu + s*L*z (mmvn_map_std applies L and adds mu).
+     * For LOWR: fall back to isotropic x = mu + s*z (mmvn_map_std doesn't
+     * support LOWR with full-dim input). */
     vec_copy(x, zprop);
     vec_scale(x, s);
-    vec_plus_eq(x, mu); 
+    if (mmvn->type != MVN_LOWR)
+      mmvn_map_std(mmvn, x);
+    else
+      vec_plus_eq(x, mu);
     
     /* convert x to y using normalizing flows if available */
     nj_apply_normalizing_flows(y, x, data, &nf_logdet);
@@ -124,8 +138,8 @@ List *nj_var_sample_mcmc(int nsamples, int thin, multi_MVN *mmvn,
 
     accrt = naccept / (double)niters;
 
-    /* during burnin only, adapt s and rho to target acceptance rate;
-     * after burnin, keep fixed */
+    /* during burnin only, adapt s to target acceptance rate;
+     * rho is fixed (see s_init comment above); after burnin, keep fixed */
     if (burnin && niters % TUNING_INTERVAL == 0) {
       int new_naccept =
           naccept - last_naccept; /* number accepted since last check */
@@ -133,24 +147,16 @@ List *nj_var_sample_mcmc(int nsamples, int thin, multi_MVN *mmvn,
       new_accrt =
         new_naccept / (double)TUNING_INTERVAL; /* acceptance rate since last check */
 
-      /* diminishing learning rates */
-      double eta_rho = 0.1 / sqrt((double)t);   /* fine tuning */
-      double eta_s   = 0.2 / sqrt((double)t);   /* coarse tuning */
-
-      /* rho and s are intertwined so we'll update them on alternating blocks */
-
-      if (t % 2 == 0) {
-        /* update rho on log scale */
-        rho = exp(log(rho) + eta_rho * (new_accrt - TARGET_ACCEPT_RATE));
-        if (rho < 0.90)   rho = 0.90;
-        if (rho > 0.9995) rho = 0.9995;
-      }
-      else {
-        /* update s on log scale */
-        s = exp(log(s) + eta_s * (new_accrt - TARGET_ACCEPT_RATE));
-        if (s < 0.1) s = 0.1;
-        if (s > 10)  s = 10;
-      }
+      /* Only adapt s; rho is fixed (adapting both caused rho to
+       * immediately hit its upper bound, making z-steps tiny and
+       * acceptance artificially high). Diminishing rate: sum of
+       * 1/sqrt(t) over 100 blocks ≈ 19, so with eta=0.2 and sustained
+       * 100% acceptance s grows by at most exp(0.14*19)=2.7x from
+       * s_init, naturally landing near the optimal scale. */
+      double eta_s = 0.2 / sqrt((double)t);
+      s = exp(log(s) + eta_s * (new_accrt - TARGET_ACCEPT_RATE));
+      if (s < MIN_S) s = MIN_S;
+      if (s > 10)    s = 10;
 
       last_naccept = naccept;
     }
@@ -162,7 +168,10 @@ List *nj_var_sample_mcmc(int nsamples, int thin, multi_MVN *mmvn,
          * output */
         vec_copy(x, lastz);
         vec_scale(x, s);
-        vec_plus_eq(x, mu);
+        if (mmvn->type != MVN_LOWR)
+          mmvn_map_std(mmvn, x);
+        else
+          vec_plus_eq(x, mu);
         nj_apply_normalizing_flows(y, x, data, &nf_logdet);
         nj_points_to_distances(y, data);
         tree = nj_inf(data->dist, data->names, NULL, NULL, data);
@@ -183,8 +192,12 @@ List *nj_var_sample_mcmc(int nsamples, int thin, multi_MVN *mmvn,
 
   /* note that the last tree sampled must have been retained in
    * retval, so we don't have to worry about freeing it here; all
-   * other trees have been freed during the loop */
-  
+   * other trees have been freed during the loop.
+   * Clear mod->tree: it may be a dangling pointer (freed proposed
+   * tree from a rejected last iteration), and tm_free(mod) in the
+   * caller would otherwise try to tr_free it again. */
+  mod->tree = NULL;
+
   vec_free(mu);
   vec_free(lastz);
   vec_free(zprop);
