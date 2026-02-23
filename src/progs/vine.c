@@ -637,8 +637,11 @@ int main(int argc, char *argv[]) {
         cpr_check_dedup_tables(crispr_mod->mut, migtable, "after cpr_expand_tables_for_dups (VI path)");
       }
 
-      if (mcmc == TRUE)
-        trees = nj_var_sample_mcmc(nsamples, mcmc_thin, mmvn, covar_data, mod, logfile);
+      if (mcmc == TRUE) {
+        fprintf(stderr, "Refining samples by MCMC with thinning interval of %d...\n", mcmc_thin);
+        trees = nj_var_sample_mcmc(nsamples, mcmc_thin, mmvn, covar_data, mod,
+                                   logfile);
+      }
 
       else /* otherwise just sample directly from approx posterior */
         trees = nj_var_sample(nsamples, mmvn, covar_data, names, NULL);

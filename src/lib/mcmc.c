@@ -23,10 +23,6 @@
 #include <variational.h>
 #include <geometry.h>
 
-#define BURNIN_ITERS 200
-#define TUNING_INTERVAL 10
-#define TARGET_ACCEPT_RATE 0.3
-
 /* MCMC refinement of variational samples */
 
 List *nj_var_sample_mcmc(int nsamples, int thin, multi_MVN *mmvn,
@@ -39,7 +35,7 @@ List *nj_var_sample_mcmc(int nsamples, int thin, multi_MVN *mmvn,
   Vector *mu = vec_new(fulld);
   double nf_logdet;
   mmvn_save_mu(mmvn, mu);
-  TreeNode *tree, *oldtree;
+  TreeNode *tree = NULL, *oldtree = NULL;
   List *retval = lst_new_ptr(nsamples);
 
   if (n >= 250) rho = 0.995; /* more conservative for higher dimensions */
@@ -50,9 +46,18 @@ List *nj_var_sample_mcmc(int nsamples, int thin, multi_MVN *mmvn,
   if (logf != NULL) {
     fprintf(logf, "### Starting MCMC sampling at posterior mean (burn-in of %d iterations, target acceptance rate %.3f)\n",
       BURNIN_ITERS, TARGET_ACCEPT_RATE);
-    fprintf(logf, "## %s\t%s\t%s\t%s\t%s\t%s\t%s\n", "iter", "lnl", "accept", "block_accrt", "tot_accrt", "rho", "s");
+    fprintf(logf, "## %s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", "iter", "lnl", "prevlnl", "burnin",
+            "accept", "block_accrt", "tot_accrt", "rho", "s");
+    
   }
 
+  /* start with mod->tree == NULL and free any previous tree; all
+   * persistent tree handling will be with tree and oldtree */
+  if (mod->tree != NULL) {
+    tr_free(mod->tree);
+    mod->tree = NULL;
+  }
+  
   Vector *lastz = vec_new(fulld), *zprop = vec_new(fulld),
     *zeta = vec_new(fulld), *x = vec_new(fulld), *y = vec_new(fulld);
   vec_zero(lastz);
@@ -80,7 +85,7 @@ List *nj_var_sample_mcmc(int nsamples, int thin, multi_MVN *mmvn,
     /* set up baseline objects */
     nj_points_to_distances(y, data);
     tree = nj_inf(data->dist, data->names, NULL, NULL, data);
-    oldtree = mod->tree; mod->tree = NULL; /* stash old tree */
+    mod->tree = NULL; /* prevent nj_reset_tree_model from freeing the tree */
     nj_reset_tree_model(mod, tree);
 
     /* calculate log likelihood and analytical gradient */
@@ -88,7 +93,7 @@ List *nj_var_sample_mcmc(int nsamples, int thin, multi_MVN *mmvn,
       lnl = cpr_compute_log_likelihood(data->crispr_mod, NULL);
     else
       lnl = nj_compute_log_likelihood(mod, data, NULL);
-
+    
     /* also get migration log likelihood if needed (skip during warmup) */
     if (data->migtable != NULL &&
       !(data->crispr_mod != NULL && data->crispr_mod->mig_warmup)) {
@@ -96,22 +101,26 @@ List *nj_var_sample_mcmc(int nsamples, int thin, multi_MVN *mmvn,
         NULL);
     }
     
-    double alpha = fmin(1.0, exp(lnl - lastlnl));
+    double alpha = lastlnl == 0 ? 1 : fmin(1.0, exp(lnl - lastlnl));
     if (unif_rand() < alpha) {
       accept = TRUE;
       lastlnl = lnl;
       vec_copy(lastz, zprop);
       naccept++;
-      tr_free(oldtree); /* free old tree */
+      if (oldtree != NULL) {
+        tr_free(oldtree); /* free old tree */
+        oldtree = NULL;
+      }
     }
     else {
       accept = FALSE;
-      tree = oldtree;  /* restore old tree */
       tr_free(tree); /* free rejected tree */
+      tree = oldtree; /* point to old tree */
+      oldtree = NULL; 
     }
 
     /* now 'tree' contains the current state of the chain, whether we
-     * accepted or not; secondary tree is freed */
+     * accepted or not; secondary tree has been freed and oldtree == NULL */
 
     accrt = naccept / (double)niters;
 
@@ -120,7 +129,7 @@ List *nj_var_sample_mcmc(int nsamples, int thin, multi_MVN *mmvn,
     if (burnin && niters % TUNING_INTERVAL == 0) {
       int new_naccept =
           naccept - last_naccept; /* number accepted since last check */
-      int t = niters / (double)TUNING_INTERVAL; /* number of checks so far */
+      int t = niters / TUNING_INTERVAL; /* number of checks so far */
       new_accrt =
         new_naccept / (double)TUNING_INTERVAL; /* acceptance rate since last check */
 
@@ -147,17 +156,35 @@ List *nj_var_sample_mcmc(int nsamples, int thin, multi_MVN *mmvn,
     }
 
     if (!burnin && niters % thin == 0) {
+      if (tree == NULL) {
+        /* special case where all iterations since last collect were
+         * rejections; reconstruct current state tree from lastz for
+         * output */
+        vec_copy(x, lastz);
+        vec_scale(x, s);
+        vec_plus_eq(x, mu);
+        nj_apply_normalizing_flows(y, x, data, &nf_logdet);
+        nj_points_to_distances(y, data);
+        tree = nj_inf(data->dist, data->names, NULL, NULL, data);
+        mod->tree = NULL; /* clear dangling ptr left by rejected proposed tree */
+      }
       lst_push_ptr(retval, tree);
+      tree = NULL; /* prevent freeing below */
       nsamp++;
-      if (nsamp == nsamples) keep_sampling = FALSE;
+      if (nsamp >= nsamples) keep_sampling = FALSE;
     }
-    else
-      tr_free(tree); /* free trees not retained */
 
-    if (logf != NULL) 
-      fprintf(logf, "## %d\t%f\t%u\t%f\t%f\t%f\t%f\n", niters, lnl, accept, new_accrt, accrt, rho, s);    
+    if (logf != NULL)
+      fprintf(logf, "## %d\t%f\t%f\t%u\t%u\t%f\t%f\t%f\t%f\n", niters, lnl, lastlnl, burnin, accept,
+              new_accrt, accrt, rho, s);
+
+    oldtree = tree; /* set up for next iteration */
   }
 
+  /* note that the last tree sampled must have been retained in
+   * retval, so we don't have to worry about freeing it here; all
+   * other trees have been freed during the loop */
+  
   vec_free(mu);
   vec_free(lastz);
   vec_free(zprop);

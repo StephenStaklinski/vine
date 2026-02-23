@@ -18,6 +18,10 @@
 #include <multi_mvn.h>
 #include <nj.h>
 
+#define BURNIN_ITERS 200
+#define TUNING_INTERVAL 10
+#define TARGET_ACCEPT_RATE 0.3
+
 List *nj_var_sample_mcmc(int nsamples, int thin, multi_MVN *mmvn,
                          CovarData *data, TreeModel *mod, FILE *logf);
 
