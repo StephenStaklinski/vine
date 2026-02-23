@@ -121,13 +121,13 @@ MAIN OPTIONS:
         --crispr-modtype.
 
     --mcmc, -J
-        Refine final samples by MCMC, to obtain a better approximation of
+        Obtain final samples by MCMC, to obtain a better approximation of
         the true posterior distribution.  Sampling is carried out in the
         embedding space, starting at the mean of the approximate posterior
-        from variational inference.  Warmup and proposal parameters are
+        from variational inference.  Burn-in and proposal parameters are
         adaptively determined.
 
-    --thin, ? <interval>    
+    --thin, -Q <interval>    
         (For use with --mcmc) Thinning interval for MCMC sampling after
         warmup (default 10).
 
