@@ -49,7 +49,7 @@ List *nj_var_sample_mcmc(int nsamples, int thin, multi_MVN *mmvn,
   TreeNode *tree = NULL, *oldtree = NULL;
   List *retval = lst_new_ptr(nsamples);
 
-  double lnl = 0.0, lastlnl = 0.0; /* placeholder */
+  double lnl = 0.0, lastlnl = 0.0, avelnl = 0.0;
   double *lnl_samps = (double *)smalloc(nsamples * sizeof(double));
 
   if (logf != NULL) {
@@ -187,6 +187,8 @@ List *nj_var_sample_mcmc(int nsamples, int thin, multi_MVN *mmvn,
       lst_push_ptr(retval, tree);
       tree = NULL; /* prevent freeing below */
       nsamp++;
+      avelnl += lastlnl;
+      
       if (nsamp >= nsamples)
         keep_sampling = FALSE;
 
@@ -228,17 +230,19 @@ List *nj_var_sample_mcmc(int nsamples, int thin, multi_MVN *mmvn,
       ess = nsamp / (1.0 + 2.0 * sum_rho);
     }
   }
+  avelnl /= nsamples;
 
   if (!silent)
     fprintf(stderr,
             "MCMC sampling complete; acceptance rate %.3f over %d iterations, "
-            "ESS %.1f/%d (%.0f%%)\n",
-            accrt, niters, ess, nsamp, 100.0 * ess / nsamp);
+            "ESS %.1f/%d (%.0f%%), average lnl %.2f...\n",
+            accrt, niters, ess, nsamp, 100.0 * ess / nsamp, avelnl);
+  
   if (logf != NULL)
     fprintf(logf,
-            "### Final MCMC stats: %d iterations, acceptance rate %.3f, "
-            "ESS %.1f/%d (%.0f%%)\n",
-            niters, accrt, ess, nsamp, 100.0 * ess / nsamp);
+            "### Final MCMC stats: %d iterations, acceptance rate %.2f, "
+            "ESS %.1f/%d (%.0f%%), avelnl %.3f\n",
+            niters, accrt, ess, nsamp, 100.0 * ess / nsamp, avelnl);
   
   sfree(lnl_samps);
 

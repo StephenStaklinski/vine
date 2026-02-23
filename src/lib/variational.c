@@ -94,7 +94,7 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn, int nminibatch,
     else
       fprintf(logf, "kld\t");
     if (data->taylor)
-      fprintf(logf, "half_trHS\t");
+      fprintf(logf, "half_trHS\telbo_bias\t");
     if (data->var_reg != 0)
       fprintf(logf, "penalty\t");
     if (data->crispr_mod == NULL)
@@ -142,8 +142,14 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn, int nminibatch,
   do {
 
     /* simple update to user */
-    if (t > 0 && t % 100 == 0)
-      if (!silent) fprintf(stderr, "Iteration %d; best ELBO=%.2f...\n", t, bestelb);
+    if (t > 0 && t % 100 == 0) {
+      if (!silent) {
+        fprintf(stderr, "Iteration %d", t);
+        if (bestelb > -INFTY)
+          fprintf(stderr, "; best ELBO=%.2f", bestelb);
+        fprintf(stderr, "...\n");
+      }
+    }
     
     /* get directives from scheduler */
     sched_next(s, st, sm, sd);
@@ -279,9 +285,15 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn, int nminibatch,
       avell *= subsamp_rescale;
 
     /* store parameters if best yet */
-    elb = avell + ave_lprior - kld + penalty + avemigll;
+    elb = avell + ave_lprior - kld - penalty + avemigll;
 
-    if (elb > bestelb && (sd->full_grad_now || data->crispr_mod != NULL)) {
+    /* don't select best during migration warmup: migration is excluded from
+     * the ELBO then, making warmup ELBOs artificially high and incomparable
+     * to post-warmup ELBOs that include the migration log likelihood */
+    int mig_warmup_active = (data->crispr_mod != NULL && data->migtable != NULL
+                             && data->crispr_mod->mig_warmup);
+    if (elb > bestelb && (sd->full_grad_now || data->crispr_mod != NULL)
+        && !mig_warmup_active) {
       bestelb = elb;
       bestll = avell;  /* not necessarily best ll but ll corresponding to bestelb */
       best_lprior = ave_lprior;
@@ -360,9 +372,10 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn, int nminibatch,
       else
         fprintf(logf, "%f\t", kld);
       if (data->taylor)
-        fprintf(logf, "%f\t", 0.5 * data->taylor->T_cache);
+        fprintf(logf, "%f\t%f\t", 0.5 * data->taylor->T_cache,
+                data->taylor->elbo_bias);
       else if (taylor_stash != NULL)
-        fprintf(logf, "0\t"); /* place holder */
+        fprintf(logf, "0\t0\t"); /* place holder */
       if (data->var_reg != 0)
         fprintf(logf, "%f\t", data->var_pen);
       if (data->crispr_mod == NULL)
