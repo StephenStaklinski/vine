@@ -638,9 +638,10 @@ int main(int argc, char *argv[]) {
       }
 
       if (mcmc == TRUE) {
-        fprintf(stderr, "Refining samples by MCMC with thinning interval of %d...\n", mcmc_thin);
+        if (!silent)
+          fprintf(stderr, "Refining samples by MCMC with thinning interval of %d...\n", mcmc_thin);
         trees = nj_var_sample_mcmc(nsamples, mcmc_thin, mmvn, covar_data, mod,
-                                   logfile);
+                                   logfile, silent);        
       }
 
       else /* otherwise just sample directly from approx posterior */
