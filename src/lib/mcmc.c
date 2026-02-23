@@ -48,7 +48,6 @@ List *nj_var_sample_mcmc(int nsamples, int thin, multi_MVN *mmvn,
   TreeNode *tree = NULL, *oldtree = NULL;
   List *retval = lst_new_ptr(nsamples);
 
-  /* initialize last_lnl based on mean; can we do this below by being clever? */
   double lnl = 0.0, lastlnl = 0.0; /* placeholder */
 
   if (logf != NULL) {
@@ -96,21 +95,20 @@ List *nj_var_sample_mcmc(int nsamples, int thin, multi_MVN *mmvn,
     /* convert x to y using normalizing flows if available */
     nj_apply_normalizing_flows(y, x, data, &nf_logdet);
 
-    /* set up baseline objects */
+    /* convert to tree */
     nj_points_to_distances(y, data);
     tree = nj_inf(data->dist, data->names, NULL, NULL, data);
     mod->tree = NULL; /* prevent nj_reset_tree_model from freeing the tree */
     nj_reset_tree_model(mod, tree);
 
-    /* calculate log likelihood and analytical gradient */
+    /* calculate log likelihood */
     if (data->crispr_mod != NULL)
       lnl = cpr_compute_log_likelihood(data->crispr_mod, NULL);
     else
       lnl = nj_compute_log_likelihood(mod, data, NULL);
     
-    /* also get migration log likelihood if needed (skip during warmup) */
-    if (data->migtable != NULL &&
-      !(data->crispr_mod != NULL && data->crispr_mod->mig_warmup)) {
+    /* also get migration log likelihood if needed */
+    if (data->crispr_mod != NULL && data->migtable != NULL) {
       lnl += mig_compute_log_likelihood(mod, data->migtable, data->crispr_mod,
         NULL);
     }
@@ -147,12 +145,9 @@ List *nj_var_sample_mcmc(int nsamples, int thin, multi_MVN *mmvn,
       new_accrt =
         new_naccept / (double)TUNING_INTERVAL; /* acceptance rate since last check */
 
-      /* Only adapt s; rho is fixed (adapting both caused rho to
-       * immediately hit its upper bound, making z-steps tiny and
-       * acceptance artificially high). Diminishing rate: sum of
-       * 1/sqrt(t) over 100 blocks ≈ 19, so with eta=0.2 and sustained
-       * 100% acceptance s grows by at most exp(0.14*19)=2.7x from
-       * s_init, naturally landing near the optimal scale. */
+      /* Diminishing rate: sum of 1/sqrt(t) over 100 blocks ≈ 19, so with eta=0.2 and sustained 100%
+       * acceptance s grows by at most exp(0.14*19)=2.7x from s_init,
+       * naturally landing near the optimal scale. */
       double eta_s = 0.2 / sqrt((double)t);
       s = exp(log(s) + eta_s * (new_accrt - TARGET_ACCEPT_RATE));
       if (s < MIN_S) s = MIN_S;
@@ -192,12 +187,9 @@ List *nj_var_sample_mcmc(int nsamples, int thin, multi_MVN *mmvn,
 
   /* note that the last tree sampled must have been retained in
    * retval, so we don't have to worry about freeing it here; all
-   * other trees have been freed during the loop.
-   * Clear mod->tree: it may be a dangling pointer (freed proposed
-   * tree from a rejected last iteration), and tm_free(mod) in the
-   * caller would otherwise try to tr_free it again. */
-  mod->tree = NULL;
+   * other trees have been freed during the loop. */
 
+  mod->tree = NULL; /* avoid dangling pointer */
   vec_free(mu);
   vec_free(lastz);
   vec_free(zprop);
