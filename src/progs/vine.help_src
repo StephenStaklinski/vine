@@ -121,7 +121,7 @@ MAIN OPTIONS:
         --crispr-modtype.
 
     --mcmc, -J
-        Obtain final samples by MCMC, to obtain a better approximation of
+        Obtain final samples by MCMC, for a better approximation of
         the true posterior distribution.  Sampling is carried out in the
         embedding space, starting at the mean of the approximate posterior
         from variational inference.  Burn-in and proposal parameters are

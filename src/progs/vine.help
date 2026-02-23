@@ -1,4 +1,4 @@
-char HELP[14633] = "\nPROGRAM: vine [Variational Inference with Node Embedding]\n\
+char HELP[14627] = "\nPROGRAM: vine [Variational Inference with Node Embedding]\n\
 \n\
 USAGE: vine [OPTIONS] alignment.fa > trees.nwk\n\
 \n\
@@ -121,7 +121,7 @@ MAIN OPTIONS:\n\
         --crispr-modtype.\n\
 \n\
     --mcmc, -J\n\
-        Obtain final samples by MCMC, to obtain a better approximation of\n\
+        Obtain final samples by MCMC, for a better approximation of\n\
         the true posterior distribution.  Sampling is carried out in the\n\
         embedding space, starting at the mean of the approximate posterior\n\
         from variational inference.  Burn-in and proposal parameters are\n\
