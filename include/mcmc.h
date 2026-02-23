@@ -8,13 +8,13 @@
  * See the LICENSE file in the project root for details.
  */
 
+/* MCMC refinement of variational samples */
+
 #ifndef MCMC_H
 #define MCMC_H
 
 #include <stdio.h>
-#include <limits.h>
 #include <phast/tree_model.h>
-#include <mvn.h>
 #include <multi_mvn.h>
 #include <nj.h>
 
