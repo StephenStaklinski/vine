@@ -224,7 +224,7 @@ int main(int argc, char *argv[]) {
     case 'K':
       dgamma_cats = atoi(optarg);
       if (dgamma_cats <= 0)
-        die("ERROR: --dgamma-cats must be positive\n");
+        die("ERROR: --dgamma <cats> must be positive\n");
       break;
     case 'w':
       negcurvature = atof(optarg);
