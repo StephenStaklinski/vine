@@ -12,6 +12,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 #include <ctype.h>
 #include <assert.h>
 #include "phast/stacks.h"
@@ -209,5 +210,226 @@ double tr_robinson_foulds(TreeNode *t1, TreeNode *t2) {
   hsh_free(name2idx);
 
   return RF;
+}
+
+/* ---- helpers for tr_tree_entropy ---------------------------------------- */
+
+/* Like bm_canonical but does NOT filter trivial (leaf) splits, so all 2n-3
+   edges of a bifurcating tree are included. */
+static BitMask *bm_canonical_any(const BitMask *m, int nbits) {
+  int sz = bm_popcount(m);
+  int other = nbits - sz;
+  if (sz == 0 || other == 0) return NULL;
+  if (sz <= other)
+    return bm_clone(m);
+  BitMask *c = bm_new(m->W);
+  bm_not(c, m, nbits);
+  return c;
+}
+
+/* (canonical split, branch length) pair. */
+typedef struct { BitMask *mask; double blen; } SplitBLen;
+
+/* qsort comparator for SplitBLen by mask. */
+static int sbl_cmp(const void *pa, const void *pb) {
+  return bm_cmp_words(&((const SplitBLen*)pa)->mask,
+                      &((const SplitBLen*)pb)->mask);
+}
+
+/* DFS that collects ALL edges (including leaf edges), writing (canonical
+   split, branch length) pairs into out[].  Returns the subtree BitMask for
+   node u (caller must bm_free it). */
+static BitMask *dfs_splits_blen(TreeNode *u, TreeNode *parent,
+                                Hashtable *name2idx, int n, int W,
+                                SplitBLen *out, int *nout) {
+  if (u->lchild == NULL && u->rchild == NULL) {
+    int idx = name_to_index(name2idx, u->name);
+    if (idx < 0) die("Leaf '%s' not in name list.\n", u->name);
+    BitMask *m = bm_new(W);
+    bm_set(m, idx);
+    return m;
+  }
+  BitMask *mask_u = bm_new(W);
+  TreeNode *ch[2] = {u->lchild, u->rchild};
+  for (int ci = 0; ci < 2; ci++) {
+    TreeNode *c = ch[ci];
+    if (!c || c == parent) continue;
+    BitMask *mc = dfs_splits_blen(c, u, name2idx, n, W, out, nout);
+    BitMask *can = bm_canonical_any(mc, n);
+    if (can) {
+      out[*nout].mask = can;
+      out[*nout].blen = c->dparent > 0.0 ? c->dparent : 1e-300;
+      (*nout)++;
+    }
+    for (int i = 0; i < W; i++) mask_u->w[i] |= mc->w[i];
+    bm_free(mc);
+  }
+  return mask_u;
+}
+
+/* Per-tree data: sorted (canonical split, branch length) array. */
+typedef struct { SplitBLen *sbl; int m; } TreeSplitData;
+
+/* Global state for qsort topology comparison (C89-style callback). */
+static TreeSplitData *g_tsd;
+
+static int cmp_tsd_idx(const void *pa, const void *pb) {
+  const TreeSplitData *a = &g_tsd[*(const int*)pa];
+  const TreeSplitData *b = &g_tsd[*(const int*)pb];
+  int m = a->m < b->m ? a->m : b->m;
+  for (int k = 0; k < m; k++) {
+    int c = bm_cmp_words(&a->sbl[k].mask, &b->sbl[k].mask);
+    if (c != 0) return c;
+  }
+  return a->m - b->m;
+}
+
+static int tsd_same_topo(const TreeSplitData *a, const TreeSplitData *b) {
+  if (a->m != b->m) return 0;
+  for (int k = 0; k < a->m; k++)
+    if (bm_cmp_words(&a->sbl[k].mask, &b->sbl[k].mask) != 0) return 0;
+  return 1;
+}
+
+/* ---- public function ----------------------------------------------------- */
+
+/* Compute split entropy, topology entropy, and mean branch-length variance
+ * for a collection of trees.
+ *
+ * H_split:  sum of Bernoulli entropies over all non-trivial splits.
+ *
+ * H_top:    Shannon entropy over distinct topologies, -Σ p(τ) log p(τ).
+ *
+ * mean_var: topology-frequency-weighted sum of sample variances of log
+ *   branch lengths, summed over branches.  For topology τ with n_τ
+ *   samples, the per-branch variance is σ²_τk for branch k.
+ *   Topology groups with n_τ = 1 contribute zero.
+ *
+ * mean_var_per_branch: mean_var / m  (m = number of branches per tree).
+ */
+void tr_tree_entropy(List *trees, double *H_split, double *H_top,
+                     double *mean_var, double *mean_var_per_branch) {
+  int S = lst_size(trees);
+  *H_split             = 0.0;
+  *H_top               = 0.0;
+  *mean_var            = 0.0;
+  *mean_var_per_branch = 0.0;
+  if (S == 0) return;
+
+  TreeNode *t0 = lst_get_ptr(trees, 0);
+  List *names = tr_leaf_names(t0);
+  lst_qsort_str(names, ASCENDING);
+  int n = lst_size(names);
+
+  if (n < 3) {
+    lst_free_strings(names);
+    lst_free(names);
+    return;  /* all three remain 0 */
+  }
+
+  int W = (n + 63) >> 6;
+  int max_edges = 2 * n;  /* generous upper bound */
+
+  Hashtable *name2idx = hsh_new(2 * n);
+  for (int i = 0; i < n; i++) {
+    String *s = lst_get_ptr(names, i);
+    hsh_put_int(name2idx, s->chars, i);
+  }
+
+  /* ---- collect per-tree (split, blen) arrays ---- */
+  TreeSplitData *tsd = smalloc(S * sizeof(TreeSplitData));
+  MaskVec nontrivial;  /* flat pool of non-trivial splits for H_split */
+  mv_init(&nontrivial, S * (n - 3 > 0 ? n - 3 : 1));
+
+  for (int s = 0; s < S; s++) {
+    TreeNode *t = lst_get_ptr(trees, s);
+    SplitBLen *sbl = smalloc(max_edges * sizeof(SplitBLen));
+    int nbl = 0;
+    BitMask *root = dfs_splits_blen(t, NULL, name2idx, n, W, sbl, &nbl);
+    bm_free(root);
+    qsort(sbl, nbl, sizeof(SplitBLen), sbl_cmp);
+    tsd[s].sbl = sbl;
+    tsd[s].m   = nbl;
+    /* gather non-trivial splits for H_split */
+    for (int k = 0; k < nbl; k++) {
+      int sz = bm_popcount(sbl[k].mask);
+      if (sz >= 2 && (n - sz) >= 2)
+        mv_push(&nontrivial, bm_clone(sbl[k].mask));
+    }
+  }
+
+  /* ---- H_split ---- */
+  qsort(nontrivial.a, nontrivial.size, sizeof(BitMask*), bm_cmp_words);
+  {
+    int i = 0;
+    while (i < nontrivial.size) {
+      int j = i + 1;
+      while (j < nontrivial.size &&
+             bm_cmp_words(&nontrivial.a[i], &nontrivial.a[j]) == 0)
+        j++;
+      double p = (double)(j - i) / S;
+      if (p > 0.0 && p < 1.0)
+        *H_split += -p * log(p) - (1.0 - p) * log(1.0 - p);
+      i = j;
+    }
+  }
+  mv_free(&nontrivial);
+
+  /* ---- H_branch: group trees by topology, compute sample covariance ---- */
+  int *order = smalloc(S * sizeof(int));
+  for (int s = 0; s < S; s++) order[s] = s;
+  g_tsd = tsd;
+  qsort(order, S, sizeof(int), cmp_tsd_idx);
+
+  int gi = 0;
+  while (gi < S) {
+    int gj = gi + 1;
+    while (gj < S && tsd_same_topo(&tsd[order[gi]], &tsd[order[gj]]))
+      gj++;
+    int ntau = gj - gi;
+    int m    = tsd[order[gi]].m;
+    double p_tau = (double)ntau / S;
+    *H_top += -p_tau * log(p_tau);
+
+    if (ntau >= 2 && m >= 1) {
+      /* sample mean of log branch lengths */
+      double *mu = calloc(m, sizeof(double));
+      for (int si = gi; si < gj; si++) {
+        SplitBLen *sbl = tsd[order[si]].sbl;
+        for (int k = 0; k < m; k++)
+          mu[k] += log(sbl[k].blen);
+      }
+      for (int k = 0; k < m; k++) mu[k] /= ntau;
+
+      /* weighted sum of sample variances over branches */
+      double lv = 0.0;
+      for (int k = 0; k < m; k++) {
+        double var_k = 0.0;
+        for (int si = gi; si < gj; si++) {
+          double d = log(tsd[order[si]].sbl[k].blen) - mu[k];
+          var_k += d * d;
+        }
+        var_k /= (ntau - 1);
+        lv += var_k;
+      }
+      *mean_var += p_tau * lv;
+      free(mu);
+    }
+    gi = gj;
+  }
+  /* per-branch: divide by number of branches (same for all trees) */
+  int m_all = tsd[order[0]].m;
+  *mean_var_per_branch = (m_all > 0) ? *mean_var / m_all : 0.0;
+  sfree(order);
+
+  /* ---- cleanup ---- */
+  for (int s = 0; s < S; s++) {
+    for (int k = 0; k < tsd[s].m; k++) bm_free(tsd[s].sbl[k].mask);
+    sfree(tsd[s].sbl);
+  }
+  sfree(tsd);
+  lst_free_strings(names);
+  lst_free(names);
+  hsh_free(name2idx);
 }
 

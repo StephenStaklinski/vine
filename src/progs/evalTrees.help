@@ -1,4 +1,4 @@
-char HELP[2019] = "\nPROGRAM: evalTrees\n\
+char HELP[2586] = "\nPROGRAM: evalTrees\n\
 \n\
 USAGE: evalTrees trees.nwk > summary.txt\n\
 \n\
@@ -40,4 +40,14 @@ OPTIONS:\n\
         Instead of pairwise distances between taxa, consider the\n\
         distribution of topological distances of all sampled trees\n\
         from a given reference tree topology.\n\
+\n\
+    --entropy, -e\n\
+        Compute uncertainty measures for the tree distribution.  Reports\n\
+        three quantities: (1) \"Split entropy\": sum of Bernoulli entropies\n\
+        over all non-trivial splits weighted by their posterior inclusion\n\
+        probabilities; (2) \"Topology entropy\": Shannon entropy over\n\
+        distinct topologies, -sum p(tau) log p(tau); (3) \"Mean\n\
+        branch-length variance per branch\": topology-frequency-weighted\n\
+        mean of sample variances of log branch lengths, averaged over\n\
+        branches.\n\
 ";

@@ -469,6 +469,7 @@ double mvn_log_det(MVN *mvn) {
   return retval;
 }
 
+
 void mvn_print(MVN *mvn, FILE *F){
   fprintf(F, "MVN (dim %d, type %d)\n", mvn->dim, mvn->type);
   fprintf(F, "mu: ");

@@ -40,3 +40,13 @@ OPTIONS:
         Instead of pairwise distances between taxa, consider the
         distribution of topological distances of all sampled trees
         from a given reference tree topology.
+
+    --entropy, -e
+        Compute uncertainty measures for the tree distribution.  Reports
+        three quantities: (1) "Split entropy": sum of Bernoulli entropies
+        over all non-trivial splits weighted by their posterior inclusion
+        probabilities; (2) "Topology entropy": Shannon entropy over
+        distinct topologies, -sum p(tau) log p(tau); (3) "Mean
+        branch-length variance per branch": topology-frequency-weighted
+        mean of sample variances of log branch lengths, averaged over
+        branches.

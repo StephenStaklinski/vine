@@ -57,6 +57,8 @@ int main(int argc, char *argv[]) {
   Matrix *D = NULL;
   List **Dij_list = NULL;
   int is_crispr = FALSE;
+  int do_entropy = FALSE;
+  List *trees_all = NULL;
   CrisprMutTable *crispr_muts = NULL;
   CrisprMutModel *crispr_mod = NULL;
   enum crispr_model_type crispr_modtype = SITEWISE;
@@ -65,6 +67,7 @@ int main(int argc, char *argv[]) {
   struct option long_opts[] = {
     {"hky-kappa", 1, 0, 'k'},
     {"crispr", 0, 0, 'c'},
+    {"entropy", 0, 0, 'e'},
     {"tree-model", 1, 0, 'm'},
     {"model-fit", 1, 0, 'f'},
     {"topology", 1, 0, 't'},
@@ -72,7 +75,7 @@ int main(int argc, char *argv[]) {
     {0, 0, 0, 0}
   };
 
-  while ((c = getopt_long(argc, argv, "f:k:m:t:ch", 
+  while ((c = getopt_long(argc, argv, "ef:k:m:t:ch",
                           long_opts, &opt_idx)) != -1) {
     switch (c) {
     case 'k':
@@ -93,6 +96,9 @@ int main(int argc, char *argv[]) {
       break;
     case 'c':
       is_crispr = TRUE;
+      break;
+    case 'e':
+      do_entropy = TRUE;
       break;
     case 'h':
       printf("%s", HELP); 
@@ -116,7 +122,10 @@ int main(int argc, char *argv[]) {
     evalaln = msa_new_from_file_define_format(msafile, format, DEFAULT_ALPHABET);
   }
   
-  if (evalaln == NULL && (mod != NULL || kappa > 0)) 
+  if (do_entropy && (topol_ref != NULL || msafname != NULL || is_crispr))
+    die("Option --entropy cannot be combined with --topology, --model-fit, or --crispr.\n");
+
+  if (evalaln == NULL && (mod != NULL || kappa > 0))
     die("Options --tree-model and --hky-kappa require --model-fit.\n");
   
   if (evalaln != NULL && mod != NULL && kappa > 0)
@@ -151,6 +160,10 @@ int main(int argc, char *argv[]) {
   else if (topol_ref != NULL) {
     rfdists = lst_new_dbl(1000);
     fprintf(stderr, "Evaluating RF distance to %s...\n", topolfname);
+  }
+  else if (do_entropy) {
+    trees_all = lst_new_ptr(1000);
+    fprintf(stderr, "Computing split entropy...\n");
   }
   else
     fprintf(stderr, "Computing pairwise-distance stats...\n");
@@ -218,6 +231,10 @@ int main(int argc, char *argv[]) {
       lst_push_dbl(rfdists, d);
     }
 
+    else if (do_entropy) {
+      lst_push_ptr(trees_all, tree);
+    }
+
     else {  /* collect distance statistics */
       if (names == NULL) {  /* first time through get canonical list
                                of leaf names */
@@ -272,6 +289,13 @@ int main(int argc, char *argv[]) {
     printf("Robinson Foulds distances against %s:\n", topolfname);
     print_stats(stdout, mean, stdev, median, min, max, min_95CI,
                 max_95CI, q25, q75);
+  }
+  else if (do_entropy) {
+    double H_split, H_top, mean_var, mean_var_per_branch;
+    tr_tree_entropy(trees_all, &H_split, &H_top, &mean_var, &mean_var_per_branch);
+    printf("Split entropy: %f\n", H_split);
+    printf("Topology entropy: %f\n", H_top);
+    printf("Mean branch-length variance: %f\n", mean_var_per_branch);
   }
   else {
     printf("#leaf1\tleaf2\tmean\tstd\tmed\tmin\tmax\tlow95CI\thigh95CI\tlow50CI\thigh50CI\n");
