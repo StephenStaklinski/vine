@@ -66,6 +66,19 @@ static inline void write_log_header(FILE *LOGF, int argc, char *argv[]) {
   fprintf(LOGF, "\n#\n");
 }
 
+static void print_embedding(multi_MVN *mmvn, char **names, FILE *F) {
+  int i, j;
+  Vector *mu_full = vec_new(mmvn->d * mmvn->n);
+  mmvn_save_mu(mmvn, mu_full);
+  for (i = 0; i < mmvn->n; i++) {
+    fprintf(F, "%s", names[i]);
+    for (j = 0; j < mmvn->d; j++)
+      fprintf(F, "\t%f", vec_get(mu_full, i*mmvn->d + j));
+    fprintf(F, "\n");
+  }
+  vec_free(mu_full);
+}
+
 int main(int argc, char *argv[]) {
   signed char c;
   int opt_idx, i, ntips = 0, nsamples = DEFAULT_NSAMPLES, dim = -1,
@@ -722,7 +735,7 @@ int main(int argc, char *argv[]) {
   }
 
   if (embeddingfile != NULL) 
-    mmvn_print_table(mmvn, embeddingfile);
+    print_embedding(mmvn, names, embeddingfile);
   
   /* free everything */
   if (msa != NULL)

@@ -134,9 +134,10 @@ MAIN OPTIONS:
     --embedding, -V <file.tsv>    
        Output a representation of the final embedding, after convergence of
        variational inference.  Output is a tab-delimited file with a row
-       for each taxon and a column for each dimension.  Values represent
-       estimated means of the multivariate normal distribution.  Can be
-       used with --nj-only to output initial embedding.
+       for each taxon, with the taxon name in the first column followed by
+       one column per embedding dimension.  Values represent estimated means
+       of the multivariate normal distribution.  Can be used with --nj-only
+       to output the initial embedding without variational inference.
         
 OPTIMIZATION:
     --learnrate, -r <alpha>
