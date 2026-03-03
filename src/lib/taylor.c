@@ -89,7 +89,7 @@ void tay_free(TaylorData *td) {
    second-order term in the Taylor expansion. */
 double nj_elbo_taylor(TreeModel *mod, multi_MVN *mmvn, CovarData *data,
                       Vector *grad, Vector *nuis_grad, double *lprior,
-                      double *migll) {
+                      double *migll, double *ll_at_mean) {
   double ll;
 
   /* make sure mmvn and mod are accessible from TaylorData */
@@ -200,6 +200,9 @@ double nj_elbo_taylor(TreeModel *mod, multi_MVN *mmvn, CovarData *data,
   }
   td->iter++;
   
+  /* capture likelihood at mean before adding trace correction */
+  if (ll_at_mean != NULL) *ll_at_mean = ll;
+
   /* add 1/2 T to log likelihood and scale gradient by 1/2; always used cached versions */
   ll += 0.5 * td->T_cache;
 
@@ -800,7 +803,7 @@ static inline void add_cached_variance_grad(Vector *grad,
 */
 double nj_elbo_hybrid(TreeModel *mod, multi_MVN *mmvn, CovarData *data,
                       int nminibatch, Vector *grad, Vector *nuis_grad,
-                      double *lprior, double *migll) {
+                      double *lprior, double *migll, double *ll_at_mean) {
   TaylorData *td = data->taylor;
   double ll_mu;
 
@@ -956,6 +959,8 @@ double nj_elbo_hybrid(TreeModel *mod, multi_MVN *mmvn, CovarData *data,
   /* ---------------------------------------
    * 6. Cleanup
    * --------------------------------------- */
+
+  if (ll_at_mean != NULL) *ll_at_mean = ll_mu;
 
   vec_free(mu);
   if (mod->tree != NULL) {

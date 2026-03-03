@@ -48,7 +48,8 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn, int nminibatch,
   double elb = 0, avell, avemigll, kld, bestelb = -INFTY, bestll = -INFTY,
     bestkld = -INFTY, bestmigll = -INFTY,
     running_tot = 0, last_running_tot = -INFTY, trace, logdet, penalty = 0,
-    bestpenalty = 0, ave_lprior, best_lprior = -INFTY, subsamp_rescale = 1.0;
+    bestpenalty = 0, ave_lprior, best_lprior = -INFTY, subsamp_rescale = 1.0,
+    ll_at_mean = 0, bestll_at_mean = -INFTY;
   TaylorData *taylor_stash = NULL;
 
   /* for nuisance parameters; these are parameters that are optimized
@@ -261,9 +262,9 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn, int nminibatch,
 
     if (data->taylor != NULL) {
       avell = nj_elbo_hybrid(mod, mmvn, data, nminibatch, avegrad,
-                             ave_nuis_grad, &ave_lprior, &avemigll);
+                             ave_nuis_grad, &ave_lprior, &avemigll, &ll_at_mean);
       /* avell = nj_elbo_taylor(mod, mmvn, data, avegrad, ave_nuis_grad, */
-      /*                        &ave_lprior, &avemigll); */
+      /*                        &ave_lprior, &avemigll, &ll_at_mean); */
       if ((data->crispr_mod != NULL && data->crispr_mod->zero_likl == TRUE) ||
           !isfinite(avell)) {
         if (!silent) fprintf(stderr, "WARNING: Taylor approximation produced invalid likelihood; "
@@ -274,9 +275,11 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn, int nminibatch,
       }
     }
     
-    if (data->taylor == NULL) 
+    if (data->taylor == NULL) {
+      ll_at_mean = 0;  /* not available in MC path */
       avell = nj_elbo_montecarlo(mod, mmvn, data, nminibatch, avegrad,
                                  ave_nuis_grad, &ave_lprior, &avemigll);
+    }
     
     vec_plus_eq(avegrad, kldgrad);
     vec_plus_eq(avegrad, sparsitygrad);
@@ -296,6 +299,7 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn, int nminibatch,
         && !mig_warmup_active) {
       bestelb = elb;
       bestll = avell;  /* not necessarily best ll but ll corresponding to bestelb */
+      bestll_at_mean = ll_at_mean;  /* ll at posterior mean; 0 if MC path */
       best_lprior = ave_lprior;
       bestkld = kld;  
       bestpenalty = penalty;
@@ -426,6 +430,8 @@ void nj_variational_inf(TreeModel *mod, multi_MVN *mmvn, int nminibatch,
             "# Reverting to parameters from iteration %d; ELB: %.2f, LNL: "
             "%.2f, LPRIOR: %.2f, KLD: %.2f, penalty: %.2f",
             bestt + 1, bestelb, bestll, best_lprior, bestkld, bestpenalty);
+    if (bestll_at_mean != 0)
+      fprintf(logf, ", LNL_mu: %.2f", bestll_at_mean);
     if (data->migtable != NULL)
       fprintf(logf, ", MIGLL: %.2f", bestmigll);
     for (j = 0; j < n_nuisance_params; j++) /* print these also if available */
