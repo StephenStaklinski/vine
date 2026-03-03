@@ -68,6 +68,8 @@ void mmvn_save_mu(multi_MVN *mmvn, Vector *mu_saved);
 void mmvn_print(multi_MVN *mmvn, FILE *F, unsigned int in_line,
                         unsigned int do_covariance);
 
+void mmvn_print_table(multi_MVN *mmvn, FILE *F);
+
 double mmvn_get_mu_el(multi_MVN *mmvn, int i);
 
 void mmvn_set_mu_el(multi_MVN *mmvn, int i, double val);

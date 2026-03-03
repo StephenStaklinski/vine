@@ -74,8 +74,8 @@ int main(int argc, char *argv[]) {
                   rank = DEFAULT_RANK, nthreads = 1, dgamma_cats = 1,
                   mcmc_thin = DEFAULT_MCMC_THIN;
   unsigned int nj_only = FALSE, random_start = FALSE, hyperbolic = FALSE,
-               embedding_only = FALSE, mcmc = FALSE,
-               mvn_dump = FALSE, natural_grad = FALSE, is_crispr = FALSE,
+               dist_embedding = FALSE, mcmc = FALSE,
+               natural_grad = FALSE, is_crispr = FALSE,
                ultrametric = FALSE, radial_flow = FALSE, planar_flow = FALSE,
                use_taylor = TRUE, had_dups = FALSE, silent = FALSE,
                log_all = FALSE;
@@ -85,7 +85,7 @@ int main(int argc, char *argv[]) {
   char **names = NULL;
   msa_format_type format = UNKNOWN_FORMAT;
   FILE *infile = NULL, *indistfile = NULL, *outdistfile = NULL, *logfile = NULL,
-    *postmeanfile = NULL, *graphsfile = NULL, *nexusfile = NULL;
+    *postmeanfile = NULL, *graphsfile = NULL, *nexusfile = NULL, *embeddingfile = NULL;
   Matrix *D = NULL;
   TreeNode *tree;
   List *namestr, *trees;
@@ -114,7 +114,7 @@ int main(int argc, char *argv[]) {
     {"niterconv", 1, 0, 'c'},
     {"dimensionality", 1, 0, 'D'},
     {"distances", 1, 0, 'd'},
-    {"embedding-only", 0, 0, 'e'},
+    {"dist-embedding", 0, 0, 'e'},
     {"hky85", 0, 0, 'k'}, 
     {"gtr", 0, 0, 'g'}, 
     {"hyperbolic", 0, 0, 'H'},
@@ -139,7 +139,7 @@ int main(int argc, char *argv[]) {
     {"thin", 1, 0, 'Q'},
     {"upweight-kld", 1, 0, 'U'},
     {"ultrametric", 0, 0, 'C'},
-    {"mvn-dump", 0, 0, 'V'},
+    {"embedding", 1, 0, 'V'},
     {"rank", 1, 0, 'W'},
     {"radial-flow", 0, 0, 'F'}, 
     {"planar-flow", 0, 0, 'Z'}, 
@@ -182,7 +182,7 @@ int main(int argc, char *argv[]) {
         die("ERROR: --dimensionality must be positive\n");
       break;
     case 'e':
-      embedding_only = TRUE;
+      dist_embedding = TRUE;
       break;
     case 'H':
       hyperbolic = TRUE;
@@ -304,7 +304,7 @@ int main(int argc, char *argv[]) {
       init_tree = mod->tree;
       break;
     case 'V':
-      mvn_dump = TRUE;
+      embeddingfile = phast_fopen(optarg, "w");
       break;
     case 'C':
       ultrametric = TRUE;
@@ -400,7 +400,7 @@ int main(int argc, char *argv[]) {
   if (is_crispr == TRUE && dgamma_cats != 1)
     die("--dgamma-cats cannot be used with CRISPR.\n");
   
-  if ((nj_only || embedding_only) &&
+  if ((nj_only || dist_embedding) &&
       (indistfile != NULL || init_tree != NULL)) {
     if (optind != argc) 
       die("ERROR: No alignment needed in this case.  Too many arguments.  Try 'vine -h'.\n");
@@ -517,10 +517,10 @@ int main(int argc, char *argv[]) {
   if (primary_state != NULL)
     mig_set_primary_state(migtable, primary_state);
 
-  if (embedding_only == TRUE) {
+  if (dist_embedding == TRUE) {
     /* in this case, embed the distances now */
     if (outdistfile == NULL)
-      die("ERROR: must use --out-dists with -embedding-only\n");
+      die("ERROR: must use --out-dists with --dist-embedding\n");
 
     mmvn = mmvn_new(ntips, dim, covar_data->mvn_type);
     nj_estimate_mmvn_from_distances(covar_data, mmvn);
@@ -539,6 +539,11 @@ int main(int argc, char *argv[]) {
       }
       if (!silent) fprintf(stderr, "Outputting NJ tree...\n");
       tr_print(stdout, tree, TRUE);
+
+      if (embeddingfile != NULL) {  /* set up initial embedding for output below */
+        mmvn = mmvn_new(ntips, dim, covar_data->mvn_type);
+        nj_estimate_mmvn_from_distances(covar_data, mmvn);
+      }
     }
 
     else {  /* full variational inference */
@@ -597,13 +602,7 @@ int main(int argc, char *argv[]) {
         vec_scale(mmvn->mvn->mu, 0.1);
       }
       else 
-        nj_estimate_mmvn_from_distances(covar_data, mmvn);
-
-      if (mvn_dump) {  /* in this case, just dump the MVN and associated data for inspection */
-        mmvn_print(mmvn, stdout, FALSE, TRUE);
-        nj_dump_covar_data(covar_data, stdout);
-        exit(0);
-      }
+        nj_estimate_mmvn_from_distances(covar_data, mmvn); 
 
       if (use_taylor && !silent)
         fprintf(stderr, "Using Taylor approximation for ELBO...\n");
@@ -715,13 +714,16 @@ int main(int argc, char *argv[]) {
   }
 
   if (outdistfile != NULL) {
-    if (embedding_only == TRUE || nj_only == FALSE)
+    if (dist_embedding == TRUE || nj_only == FALSE)
       /* in this case need to reset D */
       nj_mmvn_to_distances(mmvn, covar_data);
 
     mat_print(D, outdistfile);
   }
 
+  if (embeddingfile != NULL) 
+    mmvn_print_table(mmvn, embeddingfile);
+  
   /* free everything */
   if (msa != NULL)
     msa_free(msa);

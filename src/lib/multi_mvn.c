@@ -316,6 +316,22 @@ void mmvn_print(multi_MVN *mmvn, FILE *F, unsigned int in_line,
   vec_free(mu_full);
 }
 
+/* print the mean parameters in a table format, with one row per point and
+   one column per dimension.   */
+void mmvn_print_table(multi_MVN *mmvn, FILE *F) {
+  int i, j;
+  Vector *mu_full = vec_new(mmvn->d * mmvn->n);
+  mmvn_save_mu(mmvn, mu_full);
+  for (i = 0; i < mmvn->n; i++) {
+    for (j = 0; j < mmvn->d; j++) {
+      if (j > 0) fprintf(F, "\t");
+      fprintf(F, "%f", vec_get(mu_full, i*mmvn->d + j));
+    }
+    fprintf(F, "\n");
+  }
+  vec_free(mu_full);
+}
+
 double mmvn_get_mu_el(multi_MVN *mmvn, int i) {
   if (mmvn->type != MVN_GEN && mmvn->type != MVN_LOWR)
     return vec_get(mmvn->mvn->mu, i);

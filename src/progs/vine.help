@@ -1,4 +1,4 @@
-char HELP[14627] = "\nPROGRAM: vine [Variational Inference with Node Embedding]\n\
+char HELP[14818] = "\nPROGRAM: vine [Variational Inference with Node Embedding]\n\
 \n\
 USAGE: vine [OPTIONS] alignment.fa > trees.nwk\n\
 \n\
@@ -131,6 +131,12 @@ MAIN OPTIONS:\n\
         (For use with --mcmc) Thinning interval for MCMC sampling after\n\
         warmup (default 10).\n\
 \n\
+    --embedding, -V <file.tsv>    \n\
+       Output a representation of the final embedding, after convergence of\n\
+       variational inference.  Output is a tab-delimited file with a row\n\
+       for each taxon and a column for each dimension.  Values represent\n\
+       estimated means of the multivariate normal distribution.  Can be\n\
+       used with --nj-only to output initial embedding.\n\
         \n\
 OPTIMIZATION:\n\
     --learnrate, -r <alpha>\n\
@@ -265,20 +271,14 @@ CELL-STATE MODELING:\n\
        format.  Samples will be aligned one-to-one with both main\n\
        output trees and sampled graphs.\n\
 \n\
-\n\
 DIAGNOSTICS:\n\
-    --mvn-dump, -V\n\
-       Dump the starting multivariate normal distribution and associated\n\
-       data.  Useful for debugging or analysis. Use with options for \n\
-       variational inference.\n\
-\n\
     --out-dists, -o <outfile.dist>\n\
        Output distance matrix to <outfile.dist>.  In case of --nj-only,\n\
        will simply output initial matrix estimated from alignment.\n\
        Otherwise will represent posterior mean values of distances after\n\
        convergence of variational algorithm.\n\
 \n\
-    --embedding-only, -e \n\
+    --dist-embedding, -e \n\
        (use with --out-dists) Calculate a distance matrix based on the\n\
        initial embedding of points.  Can be compared with input distances\n\
        to evaluate fidelity of various embedding schemes.\n\

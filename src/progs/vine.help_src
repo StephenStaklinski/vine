@@ -131,6 +131,12 @@ MAIN OPTIONS:
         (For use with --mcmc) Thinning interval for MCMC sampling after
         warmup (default 10).
 
+    --embedding, -V <file.tsv>    
+       Output a representation of the final embedding, after convergence of
+       variational inference.  Output is a tab-delimited file with a row
+       for each taxon and a column for each dimension.  Values represent
+       estimated means of the multivariate normal distribution.  Can be
+       used with --nj-only to output initial embedding.
         
 OPTIMIZATION:
     --learnrate, -r <alpha>
@@ -265,20 +271,14 @@ CELL-STATE MODELING:
        format.  Samples will be aligned one-to-one with both main
        output trees and sampled graphs.
 
-
 DIAGNOSTICS:
-    --mvn-dump, -V
-       Dump the starting multivariate normal distribution and associated
-       data.  Useful for debugging or analysis. Use with options for 
-       variational inference.
-
     --out-dists, -o <outfile.dist>
        Output distance matrix to <outfile.dist>.  In case of --nj-only,
        will simply output initial matrix estimated from alignment.
        Otherwise will represent posterior mean values of distances after
        convergence of variational algorithm.
 
-    --embedding-only, -e 
+    --dist-embedding, -e 
        (use with --out-dists) Calculate a distance matrix based on the
        initial embedding of points.  Can be compared with input distances
        to evaluate fidelity of various embedding schemes.
