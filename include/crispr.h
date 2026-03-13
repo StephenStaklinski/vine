@@ -118,7 +118,16 @@ double cpr_ll_parallel(CrisprMutModel *cprmod, Vector *branchgrad,
 
 Matrix *cpr_compute_dist(CrisprMutTable *M);
 
+Matrix *cpr_compute_dist_parsimony(CrisprMutTable *M);
+
+Matrix *cpr_compute_dist_hamming(CrisprMutTable *M);
+
 double cpr_compute_pw_dist(CrisprMutTable *M, int i, int j);
+
+double cpr_compute_pw_dist_parsimony(CrisprMutTable *M, int i, int j);
+
+double cpr_compute_pw_dist_nopriv(CrisprMutTable *M, int i, int j,
+                                   int **state_counts);
 
 void cpr_set_subst_matrices(TreeModel *mod, double silent_rate,
                             List *Pt, Vector *mutrates);

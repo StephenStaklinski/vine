@@ -785,46 +785,114 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
   return ll;
 }
 
-/* build and return an upper triangular distance matrix for the cells
-   in a CrisprMutTable using a simple Poisson-type distance measure */
-Matrix *cpr_compute_dist(CrisprMutTable *M) {
-  int i, j;
-  Matrix *retval = mat_new(M->ncells, M->ncells);
-
-  mat_zero(retval);
-  
-  for (i = 0; i < M->ncells; i++) 
-    for (j = i+1; j < M->ncells; j++) 
-      mat_set(retval, i, j,
-              cpr_compute_pw_dist(M, i, j));
-
-  return retval;  
-}
-
-/* compute pairwise distance between two cells using Poisson-type
-   measure */
-double cpr_compute_pw_dist(CrisprMutTable *M, int i, int j) {
+/* compute pairwise parsimony distance between two cells under the
+   irreversible CRISPR model: minimum number of mutation events to
+   explain observed states, summed across sites and divided by number
+   of comparable sites.  Sites with -1 in either cell are skipped.
+   Unlike cpr_compute_pw_dist_nopriv, private edits are included (1
+   step each).  Unlike plain Hamming, two different derived states at
+   the same site contribute 2 (two independent mutations under the
+   irreversible model). */
+double cpr_compute_pw_dist_parsimony(CrisprMutTable *M, int i, int j) {
   int k, diff = 0, n = 0;
-  double d;
   for (k = 0; k < M->nsites; k++) {
     int typei = cpr_get_mut(M, i, k),
       typej = cpr_get_mut(M, j, k);
+    if (typei == -1 || typej == -1)
+      continue;
+    n++;
+    if (typei != typej)
+      diff += (typei != 0 && typej != 0) ? 2 : 1;
+  }
+  if (n == 0)
+    return 1;
+  return diff * 1.0 / n;
+}
 
+/* build and return an upper triangular parsimony distance matrix
+   (see cpr_compute_pw_dist_parsimony). */
+Matrix *cpr_compute_dist_parsimony(CrisprMutTable *M) {
+  int i, j;
+  Matrix *retval = mat_new(M->ncells, M->ncells);
+  mat_zero(retval);
+  for (i = 0; i < M->ncells; i++)
+    for (j = i+1; j < M->ncells; j++)
+      mat_set(retval, i, j, cpr_compute_pw_dist_parsimony(M, i, j));
+  return retval;
+}
+
+/* build and return an upper triangular distance matrix for the cells
+   in a CrisprMutTable, using parsimony distance (default). */
+Matrix *cpr_compute_dist(CrisprMutTable *M) {
+  return cpr_compute_dist_parsimony(M);
+}
+
+/* build and return an upper triangular distance matrix using plain
+   Hamming distance (see cpr_compute_pw_dist).  Kept as an alternative
+   to cpr_compute_dist; use if private-edit exclusion is not desired. */
+Matrix *cpr_compute_dist_hamming(CrisprMutTable *M) {
+  int i, j;
+  Matrix *retval = mat_new(M->ncells, M->ncells);
+  mat_zero(retval);
+  for (i = 0; i < M->ncells; i++)
+    for (j = i+1; j < M->ncells; j++)
+      mat_set(retval, i, j, cpr_compute_pw_dist(M, i, j));
+  return retval;
+}
+
+/* compute pairwise distance between two cells as plain Hamming distance
+   (proportion of differing sites, ignoring sites where either cell has -1).
+   Private (singleton) edits are included; use cpr_compute_pw_dist_nopriv
+   to exclude them. */
+double cpr_compute_pw_dist(CrisprMutTable *M, int i, int j) {
+  int k, diff = 0, n = 0;
+  for (k = 0; k < M->nsites; k++) {
+    int typei = cpr_get_mut(M, i, k),
+      typej = cpr_get_mut(M, j, k);
     if (typei == -1 || typej == -1)
       continue;
     n++;
     if (typei != typej)
       diff++;
   }
-  d = -log(1.0 - diff*1.0/n);
-  /* assumes mutations arise by a Poisson process with rate one; this
-     is the mle for the time elapsed in units of expected mutations
-     per site */
+  if (n == 0)
+    return 1;
+  return diff * 1.0 / n;
+}
 
-  if (n == 0 || d > 3)
-    d = 3; /* set a max to keep the initialization reasonable */
+/* compute pairwise distance between two cells, excluding sites where
+   either cell has a private (singleton) non-zero edit.  Such autapomorphies
+   inflate distances uniformly against all other taxa and carry no grouping
+   signal under the irreversible model.
+   state_counts[k][s] = number of cells with state s at site k
+   (pre-computed by cpr_compute_dist). */
+double cpr_compute_pw_dist_nopriv(CrisprMutTable *M, int i, int j,
+                                   int **state_counts) {
+  int k, diff = 0, n = 0;
+  for (k = 0; k < M->nsites; k++) {
+    int typei = cpr_get_mut(M, i, k),
+      typej = cpr_get_mut(M, j, k);
 
-  return d;
+    if (typei == -1 || typej == -1)
+      continue;
+    /* skip sites where either cell has a private (singleton) non-zero edit */
+    if (typei != 0 && state_counts[k][typei] == 1)
+      continue;
+    if (typej != 0 && state_counts[k][typej] == 1)
+      continue;
+    n++;
+    if (typei != typej)
+      /* under the irreversible model, two different derived states at
+         the same site require two independent mutation events (one per
+         lineage), so contribute 2 to the distance; one derived vs.
+         unedited is a single event (contributes 1) */
+      diff += (typei != 0 && typej != 0) ? 2 : 1;
+  }
+
+  if (n == 0)
+    return 1; /* no comparable non-private sites; treat as maximally distant */
+
+  return diff * 1.0 / n;
 }
 
 /* set P = exp(Qt) matrix for branch length t, using parameterization

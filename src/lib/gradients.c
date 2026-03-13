@@ -489,8 +489,9 @@ double nj_dL_dx_smartest(Vector *x, Vector *dL_dx, TreeModel *mod,
   double ll_base;
   int i, j, d;
 
-/* set up Neighbors tape for this NJ run */
-  Neighbors *nb = data->crispr_mod == NULL ? nj_new_neighbors(n) : NULL;
+/* set up Neighbors tape for this NJ run; use NJ backprop unless
+     using UPGMA (ultrametric) inference */
+  Neighbors *nb = data->ultrametric ? NULL : nj_new_neighbors(n);
   
   *migll = 0.0;
   
