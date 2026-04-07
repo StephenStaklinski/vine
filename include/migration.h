@@ -82,6 +82,9 @@ void mig_print_set_labeled_nexus(List *tree_lst, FILE *outf, MigTable *mg,
 void mig_print_set_dot(List *tree_lst, FILE *outf, MigTable *mg,
                        List *statesamps_lst);
 
+void mig_print_set_edgewise_csv(List *tree_lst, FILE *outf, MigTable *mg,
+                                List *statesamps_lst);
+
 void mig_set_REV_matrix(MigTable *mg, Vector *params);
 
 void mig_scale_rate_matrix(MigTable *mg);

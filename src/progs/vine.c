@@ -98,7 +98,8 @@ int main(int argc, char *argv[]) {
   char **names = NULL;
   msa_format_type format = UNKNOWN_FORMAT;
   FILE *infile = NULL, *indistfile = NULL, *outdistfile = NULL, *logfile = NULL,
-    *postmeanfile = NULL, *graphsfile = NULL, *nexusfile = NULL, *embeddingfile = NULL;
+    *postmeanfile = NULL, *graphsfile = NULL, *nexusfile = NULL,
+    *consensusfile = NULL, *embeddingfile = NULL;
   Matrix *D = NULL;
   TreeNode *tree;
   List *namestr, *trees;
@@ -143,6 +144,7 @@ int main(int argc, char *argv[]) {
     {"out-dists", 1, 0, 'o'},
     {"sample-graphs", 1, 0, 'O'},
     {"labeled-trees", 1, 0, 'B'},
+    {"consensus-graph", 1, 0, 'E'},
     {"nsamples", 1, 0, 's'},
     {"learnrate", 1, 0, 'r'},
     {"random-start", 0, 0, 'R'},
@@ -172,7 +174,7 @@ int main(int argc, char *argv[]) {
     {0, 0, 0, 0}
   };
 
-  while ((c = getopt_long(argc, argv, "0:1:ab:B:c:d:D:egG:hHi:FZj:JkK:l:L:m:M:n:No:v:r:Rt:T:Vw:W:S:s:CY:yPp:Xx", long_opts, &opt_idx)) != -1) {
+  while ((c = getopt_long(argc, argv, "0:1:ab:B:c:d:D:E:egG:hHi:FZj:JkK:l:L:m:M:n:No:v:r:Rt:T:Vw:W:S:s:CY:yPp:Xx", long_opts, &opt_idx)) != -1) {
     switch (c) {
     case 'b':
       batchsize = atoi(optarg);
@@ -181,6 +183,9 @@ int main(int argc, char *argv[]) {
       break;
     case 'B':
       nexusfile = phast_fopen(optarg, "w");
+      break;
+    case 'E':
+      consensusfile = phast_fopen(optarg, "w");
       break;
     case 'c':
       niter_conv = atoi(optarg);
@@ -406,6 +411,9 @@ int main(int argc, char *argv[]) {
   
   if (nexusfile != NULL && migtable == NULL)
       die("--labeled-trees requires --migration\n");
+
+  if (consensusfile != NULL && migtable == NULL)
+      die("--consensus-graph requires --migration\n");
 
   if (use_taylor && batchsize != DEFAULT_BATCHSIZE && !silent)
     fprintf(stderr,
@@ -694,7 +702,7 @@ int main(int argc, char *argv[]) {
         tr_print(stdout, t, TRUE);
 
         /* in these cases we need to sample cell states for each tree */
-        if (graphsfile != NULL || nexusfile != NULL) {
+        if (graphsfile != NULL || nexusfile != NULL || consensusfile != NULL) {
           if (i == 0 && !silent)
             fprintf(stderr, "Sampling cell states...\n");
 
@@ -713,6 +721,10 @@ int main(int argc, char *argv[]) {
       if (nexusfile != NULL) {
         if (!silent) fprintf(stderr, "Writing cell-state-labeled trees...\n");
         mig_print_set_labeled_nexus(trees, nexusfile, migtable, migstates_lst);
+      }
+      if (consensusfile != NULL) {
+        if (!silent) fprintf(stderr, "Writing edgewise consensus migration graph...\n");
+        mig_print_set_edgewise_csv(trees, consensusfile, migtable, migstates_lst);
       }
 
       if (postmeanfile != NULL) {
@@ -758,6 +770,8 @@ int main(int argc, char *argv[]) {
     fclose(outdistfile);
   if (postmeanfile != NULL)
     fclose(postmeanfile);
+  if (consensusfile != NULL)
+    fclose(consensusfile);
   if (graphsfile != NULL)
     fclose(graphsfile);
   if (nexusfile != NULL)

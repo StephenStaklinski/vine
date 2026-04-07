@@ -998,6 +998,121 @@ void mig_print_set_dot(List *tree_lst, FILE *outf, MigTable *mg,
   mdag_set_free(set);
 }
 
+/* print CSV file with edgewise migration-event probabilities across a set of trees */
+void mig_print_set_edgewise_csv(List *tree_lst, FILE *outf, MigTable *mg,
+                                List *statesamps_lst) {
+  int i, j;
+  int ntrees;
+  List *event_names, *event_counts;
+
+  assert(lst_size(tree_lst) == lst_size(statesamps_lst));
+  ntrees = lst_size(tree_lst);
+
+  event_names = lst_new_ptr(50);
+  event_counts = lst_new_int(50);
+
+  /* Iterate over all trees individually */
+  for (i = 0; i < ntrees; i++) {
+    TreeNode *tree = lst_get_ptr(tree_lst, i);  /* Get the root of the i-th tree */
+    List *state_samples = (List*)lst_get_ptr(statesamps_lst, i);  /* Get the list of states (tissues) for the i-th tree */
+    int *pair_event_idx = smalloc(mg->nstates * mg->nstates * sizeof(int)); /* Initialize array to track event indices */
+
+    /* Initialize event indices to zero */
+    for (j = 0; j < mg->nstates * mg->nstates; j++)
+      pair_event_idx[j] = 0;
+
+    /* Iterate over all nodes in the tree */
+    for (j = 0; j < tree->nnodes; j++) {
+      TreeNode *n = lst_get_ptr(tree->nodes, j);
+      if (n->parent == NULL)  /* TODO: Handle the known origin as the primary tissue ? */
+        continue;
+
+      /* Get the states (tissues) for the branch */
+      int childstate = lst_get_int(state_samples, n->id);
+      int parstate = lst_get_int(state_samples, n->parent->id);
+
+      /* Skip self migrations (same tissue)*/
+      if (childstate == parstate)
+        continue;
+
+      /* Increment the event index for this pair of states */
+      int pair_idx = parstate * mg->nstates + childstate;
+      int event_idx = ++pair_event_idx[pair_idx];
+
+      /* Generate migration event name with the event index */
+      String *parname = (String*)lst_get_ptr(mg->statenames, parstate);
+      String *childname = (String*)lst_get_ptr(mg->statenames, childstate);
+      String *event_name = str_new(STR_MED_LEN);
+      str_append(event_name, parname);
+      str_append_charstr(event_name, "_");
+      str_append(event_name, childname);
+      str_append_charstr(event_name, "_");
+      str_append_int(event_name, event_idx);
+
+      /* Check if this event name already exists in the consensus */
+      int name_pos = -1;
+      for (int k = 0; k < lst_size(event_names); k++) {
+        String *cand = (String*)lst_get_ptr(event_names, k);
+        if (!strcmp(cand->chars, event_name->chars)) {
+          name_pos = k;
+          break;
+        }
+      }
+
+      if (name_pos == -1) {
+        /* Add the event name to the consensus if it does not exist and initialize the count to 1 */
+        lst_push_ptr(event_names, event_name);
+        lst_push_int(event_counts, 1);
+      }
+      else {
+        /* Increment the count for an existing event in the consensus */
+        int c = lst_get_int(event_counts, name_pos);
+        lst_set_int(event_counts, name_pos, c + 1);
+        str_free(event_name);
+      }
+    }
+
+    sfree(pair_event_idx);
+  }
+
+  /* Write the header */
+  fprintf(outf, "migration_event,edgewise_probability\n");
+
+  /* Sort events by frequency */
+  int nevents = lst_size(event_names);
+  int *printed = smalloc(nevents * sizeof(int));
+  for (i = 0; i < nevents; i++)
+    printed[i] = 0;
+
+  /* print events from highest to lowest probability (equivalently, count) */
+  for (i = 0; i < nevents; i++) {
+    int best_idx = -1;
+    int best_count = -1;
+    for (j = 0; j < nevents; j++) {
+      if (printed[j])
+        continue;
+      int c = lst_get_int(event_counts, j);
+      if (c > best_count) {
+        best_count = c;
+        best_idx = j;
+      }
+    }
+
+    if (best_idx == -1)
+      break;
+
+    printed[best_idx] = 1;
+    String *event_name = (String*)lst_get_ptr(event_names, best_idx);
+    double prob = (ntrees > 0 ? (double)best_count / ntrees : 0.0);
+    fprintf(outf, "%s,%.10g\n", event_name->chars, prob);
+  }
+  sfree(printed);
+
+  lst_free_strings(event_names);
+  lst_free(event_names);
+  lst_free(event_counts);
+}
+
 /***************************************************************************
  Functions adapted from phast_subst_mods.c to handle migration models 
  ***************************************************************************/

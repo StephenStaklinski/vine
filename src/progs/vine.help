@@ -1,4 +1,4 @@
-char HELP[14818] = "\nPROGRAM: vine [Variational Inference with Node Embedding]\n\
+char HELP[15345] = "\nPROGRAM: vine [Variational Inference with Node Embedding]\n\
 \n\
 USAGE: vine [OPTIONS] alignment.fa > trees.nwk\n\
 \n\
@@ -134,9 +134,10 @@ MAIN OPTIONS:\n\
     --embedding, -V <file.tsv>    \n\
        Output a representation of the final embedding, after convergence of\n\
        variational inference.  Output is a tab-delimited file with a row\n\
-       for each taxon and a column for each dimension.  Values represent\n\
-       estimated means of the multivariate normal distribution.  Can be\n\
-       used with --nj-only to output initial embedding.\n\
+       for each taxon, with the taxon name in the first column followed by\n\
+       one column per embedding dimension.  Values represent estimated means\n\
+       of the multivariate normal distribution.  Can be used with --nj-only\n\
+       to output the initial embedding without variational inference.\n\
         \n\
 OPTIMIZATION:\n\
     --learnrate, -r <alpha>\n\
@@ -270,6 +271,13 @@ CELL-STATE MODELING:\n\
        Output complete trees with cell-state-labeled nodes in nexus\n\
        format.  Samples will be aligned one-to-one with both main\n\
        output trees and sampled graphs.\n\
+\n\
+    --consensus-graph, -E <file.csv>\n\
+            Output edgewise consensus migration-event probabilities in CSV\n\
+            format. Events are labeled as SOURCE_DEST_k (for example LL_RW_1,\n\
+            LL_RW_2), where k is the multiedge encounter index for that directed\n\
+            source-destination pair within each tree.  Probabilities are\n\
+            normalized by the total number of sampled trees.\n\
 \n\
 DIAGNOSTICS:\n\
     --out-dists, -o <outfile.dist>\n\
