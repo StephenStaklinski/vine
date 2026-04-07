@@ -1024,18 +1024,22 @@ void mig_print_set_edgewise_csv(List *tree_lst, FILE *outf, MigTable *mg,
     /* Iterate over all nodes in the tree */
     for (j = 0; j < tree->nnodes; j++) {
       TreeNode *n = lst_get_ptr(tree->nodes, j);
-      if (n->parent == NULL)  /* TODO: Handle the known origin as the primary tissue ? */
+
+      /* TODO: This check currently skips the origin branch, so we need to make it 
+      handle the known origin as the primary tissue in case there is a migration 
+      event on the origin branch to record in the consensus. */
+      if (n->parent == NULL)
         continue;
 
       /* Get the states (tissues) for the branch */
       int childstate = lst_get_int(state_samples, n->id);
       int parstate = lst_get_int(state_samples, n->parent->id);
 
-      /* Skip self migrations (same tissue)*/
+      /* Skip self migrations (same tissue) */
       if (childstate == parstate)
         continue;
 
-      /* Increment the event index for this pair of states */
+      /* Increment the event index for this pair of states (tissues) */
       int pair_idx = parstate * mg->nstates + childstate;
       int event_idx = ++pair_event_idx[pair_idx];
 
@@ -1060,7 +1064,7 @@ void mig_print_set_edgewise_csv(List *tree_lst, FILE *outf, MigTable *mg,
       }
 
       if (name_pos == -1) {
-        /* Add the event name to the consensus if it does not exist and initialize the count to 1 */
+        /* Add the event name to the consensus and initialize the count to 1 */
         lst_push_ptr(event_names, event_name);
         lst_push_int(event_counts, 1);
       }
@@ -1075,16 +1079,15 @@ void mig_print_set_edgewise_csv(List *tree_lst, FILE *outf, MigTable *mg,
     sfree(pair_event_idx);
   }
 
-  /* Write the header */
+  /* Print the header */
   fprintf(outf, "migration_event,edgewise_probability\n");
 
-  /* Sort events by frequency */
+  /* Print events from highest to lowest probability (equivalently, count) */
   int nevents = lst_size(event_names);
   int *printed = smalloc(nevents * sizeof(int));
   for (i = 0; i < nevents; i++)
     printed[i] = 0;
 
-  /* print events from highest to lowest probability (equivalently, count) */
   for (i = 0; i < nevents; i++) {
     int best_idx = -1;
     int best_count = -1;
