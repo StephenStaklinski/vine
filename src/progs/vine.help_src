@@ -273,11 +273,11 @@ CELL-STATE MODELING:
        output trees and sampled graphs.
 
     --consensus-graph, -E <file.csv>
-            Output edgewise consensus migration-event probabilities in CSV
-            format. Events are labeled as SOURCE_DEST_k (for example LL_RW_1,
-            LL_RW_2), where k is the multiedge encounter index for that directed
-            source-destination pair within each tree.  Probabilities are
-            normalized by the total number of sampled trees.
+       Output edgewise consensus migration-event probabilities in CSV
+       format. Events are labeled as SOURCE_DEST_k (for example LL_RW_1,
+       LL_RW_2), where k is the multiedge encounter index for that directed
+       source-destination pair within each tree.  Probabilities are
+       normalized by the total number of sampled trees.
 
 DIAGNOSTICS:
     --out-dists, -o <outfile.dist>
