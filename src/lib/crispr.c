@@ -343,7 +343,8 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
   int nstates;
   TreeNode *n, *sibling;
   double total_prob = 0;
-  List *traversal, *pre_trav;
+  List *traversal, *pre_trav = NULL;
+  int npre_trav = 0;
   double **pL = NULL, **pLbar = NULL;
   double ll = 0;
   double tmp[cprmod->nstates+1], root_eqfreqs[cprmod->nstates+1];
@@ -372,6 +373,10 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
   }
 
   traversal = tr_postorder(cprmod->mod->tree);
+  if (derivs->branchgrad != NULL) {
+    pre_trav = tr_preorder(cprmod->mod->tree);
+    npre_trav = lst_size(pre_trav);
+  }
 
   /* set up active range of sites for this thread */
   int r0 = 0, r1 = cprmod->nsites;
@@ -569,10 +574,8 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
        across the tree to compute "outside" probabilities */
     if (derivs->branchgrad != NULL) {
       double expon;
-      
-      pre_trav = tr_preorder(cprmod->mod->tree);
 
-      for (nodeidx = 0; nodeidx < lst_size(pre_trav); nodeidx++) {
+      for (nodeidx = 0; nodeidx < npre_trav; nodeidx++) {
         n = lst_get_ptr(pre_trav, nodeidx);
 
         if (n->parent == NULL) { /* base case */
