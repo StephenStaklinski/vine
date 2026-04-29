@@ -94,8 +94,6 @@ CovarData *nj_new_covar_data(enum covar_type covar_param, Matrix *dist, int dim,
                              unsigned int radial_flow, unsigned int planar_flow,
                              TreePrior *treeprior, MigTable *mtable,
                              unsigned int use_taylor) {
-  static int seeded = 0;
-  
   CovarData *retval = smalloc(sizeof(CovarData));
   retval->type = covar_param;
   retval->msa = msa;
@@ -175,10 +173,6 @@ CovarData *nj_new_covar_data(enum covar_type covar_param, Matrix *dist, int dim,
     /* initialization is tricky; we want variances on the order of
        0.01 and expected covariances of 0 but we want to avoid
        orthogonality; initialize randomly with appropriate distrib */
-    if (!seeded) {
-      srandom((unsigned int)time(NULL));
-      seeded = 1;
-    }
     sdev = sqrt((double)LAMBDA_INIT / retval->lowrank); /* yields expected variance
                                                    of LAMBDA_INIT and expected
                                                    covariances of 0 */
