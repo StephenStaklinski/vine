@@ -467,16 +467,16 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
 
     /* first zero out all pL values because with the smart
        algorithm, we won't visit most elements in the matrix */
-    for (nodeidx = 0; nodeidx < cprmod->mod->tree->nnodes; nodeidx++) {
+    for (nodeidx = 0; nodeidx < cprmod->mod->tree->nnodes; nodeidx++)
       nodetypes[nodeidx] = -99; /* also initialize these */
-      for (i = 0; i < nstates; i++) 
+    for (i = 0; i < nstates; i++)
+      for (nodeidx = 0; nodeidx < cprmod->mod->tree->nnodes; nodeidx++)
         pL[i][nodeidx] = 0;
-    }
 
     /* same for pLbar if needed */
     if (derivs->branchgrad != NULL) {
-      for (nodeidx = 0; nodeidx < cprmod->mod->tree->nnodes; nodeidx++) 
-        for (i = 0; i < nstates; i++)
+      for (i = 0; i < nstates; i++)
+        for (nodeidx = 0; nodeidx < cprmod->mod->tree->nnodes; nodeidx++)
           pLbar[i][nodeidx] = 0.0;
     }
     
