@@ -405,6 +405,8 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
   double tmp[cprmod->nstates+1], root_eqfreqs[cprmod->nstates+1];
   Vector *lscale, *lscale_o; /* inside and outside versions */
   CprBranchParams *branch_params = NULL;
+  List **state_sets = NULL;
+  int *state_set_sizes = NULL;
   List *par_states, *lchild_states, *rchild_states, *child_states, *sib_states;
   int pstate, lcstate, rcstate, cstate, sstate;
       
@@ -418,6 +420,8 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
   lscale = vec_new(cprmod->mod->tree->nnodes+1); 
   lscale_o = vec_new(cprmod->mod->tree->nnodes+1); 
   branch_params = smalloc((cprmod->mod->tree->nnodes+1) * sizeof(CprBranchParams));
+  state_sets = smalloc((cprmod->mod->tree->nnodes+1) * sizeof(List*));
+  state_set_sizes = smalloc((cprmod->mod->tree->nnodes+1) * sizeof(int));
   
   if (derivs->branchgrad != NULL) {
     /* set up complementary "outside" probability matrices */
@@ -505,6 +509,9 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
           nodetypes[n->id] = state;
         else /* unrestricted if silent */
           nodetypes[n->id] = ancsets->NORESTRICT;
+
+        state_sets[n->id] = cpr_get_state_set(ancsets, nodetypes, n, nstates);
+        state_set_sizes[n->id] = lst_size(state_sets[n->id]);
       }
       else {
         /* general recursive case */
@@ -552,23 +559,28 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
           thistype = ancsets->NORESTRICT;
 
         nodetypes[n->id] = thistype;
+        state_sets[n->id] = cpr_get_state_set(ancsets, nodetypes, n, nstates);
+        state_set_sizes[n->id] = lst_size(state_sets[n->id]);
 
         /* now get corresponding sets of eligible states */
-        par_states = cpr_get_state_set(ancsets, nodetypes, n, nstates);
-        lchild_states = cpr_get_state_set(ancsets, nodetypes, n->lchild, nstates);
-        rchild_states = cpr_get_state_set(ancsets, nodetypes, n->rchild, nstates);
+        par_states = state_sets[n->id];
+        lchild_states = state_sets[n->lchild->id];
+        rchild_states = state_sets[n->rchild->id];
+        int npar_states = state_set_sizes[n->id];
+        int nlchild_states = state_set_sizes[n->lchild->id];
+        int nrchild_states = state_set_sizes[n->rchild->id];
 
         /* do this in a way that handles scaling.  first compute
            unnormalized inside values */
-        for (i = 0; i < lst_size(par_states); i++) {
+        for (i = 0; i < npar_states; i++) {
           double totl = 0.0, totr = 0.0;
           pstate = lst_get_int(par_states, i);
-          for (j = 0; j < lst_size(lchild_states); j++) {
+          for (j = 0; j < nlchild_states; j++) {
             lcstate = lst_get_int(lchild_states, j);
             totl += pL[lcstate][n->lchild->id] *
               cpr_get_branch_prob(lbp, pstate, lcstate, mutrates);
           }
-          for (k = 0; k < lst_size(rchild_states); k++) {
+          for (k = 0; k < nrchild_states; k++) {
             rcstate = lst_get_int(rchild_states, k);
             totr += pL[rcstate][n->rchild->id] *
               cpr_get_branch_prob(rbp, pstate, rcstate, mutrates);
@@ -579,7 +591,7 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
 
         /* nodewise max-normalization across states */
         double maxv = 0.0;
-        for (i = 0; i < lst_size(par_states); i++) {
+        for (i = 0; i < npar_states; i++) {
           pstate = lst_get_int(par_states, i);
           if (pL[pstate][n->id] > maxv)
             maxv = pL[pstate][n->id];
@@ -592,7 +604,7 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
 
         if (maxv > 0.0) {
           /* normalize and update scale */
-          for (i = 0; i < lst_size(par_states); i++) {
+          for (i = 0; i < npar_states; i++) {
             pstate = lst_get_int(par_states, i);
             pL[pstate][n->id] /= maxv;
           }
@@ -604,7 +616,7 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
           derivs->zero_likl = TRUE;
 
         /* zero out tiny values to save time later */
-        for (i = 0; i < lst_size(par_states); i++) {
+        for (i = 0; i < npar_states; i++) {
           pstate = lst_get_int(par_states, i);
           if (pL[pstate][n->id] < REL_CUTOFF)
             pL[pstate][n->id] = 0.0;
@@ -613,9 +625,10 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
     } 
   
     /* termination */
-    par_states = cpr_get_state_set(ancsets, nodetypes, cprmod->mod->tree, nstates);
+    par_states = state_sets[cprmod->mod->tree->id];
+    int npar_states = state_set_sizes[cprmod->mod->tree->id];
     total_prob = 0;
-    for (i = 0; i < lst_size(par_states); i++) {
+    for (i = 0; i < npar_states; i++) {
       int rstate = lst_get_int(par_states, i);
       total_prob += root_eqfreqs[rstate] * pL[rstate][cprmod->mod->tree->id];
     }
@@ -633,9 +646,10 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
         n = lst_get_ptr(pre_trav, nodeidx);
 
         if (n->parent == NULL) { /* base case */
-          par_states = cpr_get_state_set(ancsets, nodetypes, n, nstates);
+          par_states = state_sets[n->id];
+          int npar_states = state_set_sizes[n->id];
           double maxv = 0.0;
-          for (i = 0; i < lst_size(par_states); i++) {
+          for (i = 0; i < npar_states; i++) {
             pstate = lst_get_int(par_states, i);
             pLbar[pstate][n->id] = root_eqfreqs[pstate];
             if (pLbar[pstate][n->id] > maxv)
@@ -644,7 +658,7 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
 
           /* lscale_o[root] is already zero from vec_zero */
           if (maxv > 0.0) {
-            for (i = 0; i < lst_size(par_states); i++) {
+            for (i = 0; i < npar_states; i++) {
               pstate = lst_get_int(par_states, i);
               pLbar[pstate][n->id] /= maxv;
             }
@@ -657,19 +671,22 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
           CprBranchParams *par_bp = &branch_params[n->id];
           CprBranchParams *sib_bp = &branch_params[sibling->id];
 
-          par_states = cpr_get_state_set(ancsets, nodetypes, n->parent, nstates);
-          child_states = cpr_get_state_set(ancsets, nodetypes, n, nstates);
-          sib_states = cpr_get_state_set(ancsets, nodetypes, sibling, nstates);
+          par_states = state_sets[n->parent->id];
+          child_states = state_sets[n->id];
+          sib_states = state_sets[sibling->id];
+          int npar_states = state_set_sizes[n->parent->id];
+          int nchild_states = state_set_sizes[n->id];
+          int nsib_states = state_set_sizes[sibling->id];
 
           /* first form tmp[j] = sum_k pLbar(parent=j) * pL(sibling=k) * P_sib(j,k) */
-          for (j = 0; j < lst_size(par_states); j++) {
+          for (j = 0; j < npar_states; j++) {
             pstate = lst_get_int(par_states, j);
             tmp[pstate] = 0.0;
             double a = pLbar[pstate][n->parent->id];
 
             if (a == 0.0) continue;
 
-            for (k = 0; k < lst_size(sib_states); k++) {
+            for (k = 0; k < nsib_states; k++) {
               sstate = lst_get_int(sib_states, k);
               double b = pL[sstate][sibling->id];
               if (b > 0.0)
@@ -678,10 +695,10 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
           }
 
           /* now propagate to child */
-          for (i = 0; i < lst_size(child_states); i++) {      /* child state */
+          for (i = 0; i < nchild_states; i++) {      /* child state */
             cstate = lst_get_int(child_states, i);
             double sum = 0.0;
-            for (j = 0; j < lst_size(par_states); j++) {      /* parent state */
+            for (j = 0; j < npar_states; j++) {      /* parent state */
               pstate = lst_get_int(par_states, j);
               sum += tmp[pstate] * (cpr_get_branch_prob(par_bp, pstate, cstate, mutrates));
             }
@@ -690,7 +707,7 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
           
           /* nodewise normalization of outside vector */
           double maxv = 0.0;
-          for (i = 0; i < lst_size(child_states); i++) {   
+          for (i = 0; i < nchild_states; i++) {   
             cstate = lst_get_int(child_states, i);
             if (pLbar[cstate][n->id] > maxv)
               maxv = pLbar[cstate][n->id];
@@ -702,7 +719,7 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
                   vec_get(lscale, sibling->id));
 
           if (maxv > 0.0) {
-            for (i = 0; i < lst_size(child_states); i++) {   
+            for (i = 0; i < nchild_states; i++) {   
               cstate = lst_get_int(child_states, i);
               pLbar[cstate][n->id] /= maxv;
             }
@@ -711,7 +728,7 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
                     vec_get(lscale_o, n->id) + log(maxv));
           }
 
-          for (i = 0; i < lst_size(child_states); i++) {   
+          for (i = 0; i < nchild_states; i++) {   
             cstate = lst_get_int(child_states, i);
             if (pLbar[cstate][n->id] < REL_CUTOFF)
               pLbar[cstate][n->id] = 0.0;
@@ -735,16 +752,19 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
         CprBranchParams *sib_bp = &branch_params[sibling->id];
 
         /* get corresponding sets of eligible states */
-        par_states = cpr_get_state_set(ancsets, nodetypes, par, nstates);
-        child_states = cpr_get_state_set(ancsets, nodetypes, n, nstates);
-        sib_states = cpr_get_state_set(ancsets, nodetypes, sibling, nstates);
+        par_states = state_sets[par->id];
+        child_states = state_sets[n->id];
+        sib_states = state_sets[sibling->id];
+        int npar_states = state_set_sizes[par->id];
+        int nchild_states = state_set_sizes[n->id];
+        int nsib_states = state_set_sizes[sibling->id];
         
         /* this part is just a constant to propagate through to the
            derivative */
-        for (i = 0; i < lst_size(par_states); i++) {  /* parent */
+        for (i = 0; i < npar_states; i++) {  /* parent */
           pstate = lst_get_int(par_states, i);
           tmp[pstate] = 0;
-          for (k = 0; k < lst_size(sib_states); k++) { /* sibling */
+          for (k = 0; k < nsib_states; k++) { /* sibling */
             sstate = lst_get_int(sib_states, k);
             tmp[pstate] += pL[sstate][sibling->id] * (cpr_get_branch_prob(sib_bp, pstate, sstate, mutrates));
           }
@@ -765,9 +785,9 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
           CprGradParams grad_bp;
           deriv = 0;
           cpr_set_branch_grad_params(&grad_bp, silst, n->dparent, cprmod->sil_rate);
-          for (i = 0; i < lst_size(par_states); i++) {
+          for (i = 0; i < npar_states; i++) {
             pstate = lst_get_int(par_states, i);
-            for (j = 0; j < lst_size(child_states); j++) {
+            for (j = 0; j < nchild_states; j++) {
               cstate = lst_get_int(child_states, j);
               double grad = cpr_get_branch_grad(&grad_bp, pstate, cstate, mutrates);
               assert(isfinite(tmp[pstate]) && isfinite(pLbar[pstate][par->id]) &&
@@ -790,9 +810,9 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
         this_deriv_sil = 0;
         CprGradParams grad_sil;
         cpr_set_silent_grad_params(&grad_sil, silst, n->dparent, cprmod->sil_rate);
-        for (i = 0; i < lst_size(par_states); i++) {
+        for (i = 0; i < npar_states; i++) {
           pstate = lst_get_int(par_states, i);
-          for (j = 0; j < lst_size(child_states); j++) {
+          for (j = 0; j < nchild_states; j++) {
             cstate = lst_get_int(child_states, j);
             this_deriv_sil +=  tmp[pstate] * pLbar[pstate][par->id] * pL[cstate][n->id] *
               cpr_get_silent_grad(&grad_sil, pstate, cstate, mutrates);
@@ -805,12 +825,13 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
       } /* end node loop */
 
       /* also compute gradient for leading branch */
-      child_states = cpr_get_state_set(ancsets, nodetypes, cprmod->mod->tree, nstates);
+      child_states = state_sets[cprmod->mod->tree->id];
+      int nchild_states = state_set_sizes[cprmod->mod->tree->id];
       CprGradParams grad_lead;
       cpr_set_branch_grad_params(&grad_lead, silst, cprmod->mod->tree->dparent,
                                  cprmod->sil_rate);
       double this_deriv_leading_t = 0;
-      for (j = 0; j < lst_size(child_states); j++) {
+      for (j = 0; j < nchild_states; j++) {
         cstate = lst_get_int(child_states, j);
         this_deriv_leading_t += pL[cstate][cprmod->mod->tree->id]
           * cpr_get_branch_grad(&grad_lead, 0, cstate, mutrates);
@@ -827,7 +848,7 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
       this_deriv_sil = 0;
       cpr_set_silent_grad_params(&grad_lead, silst, cprmod->mod->tree->dparent,
                                  cprmod->sil_rate);
-      for (j = 0; j < lst_size(child_states); j++) {
+      for (j = 0; j < nchild_states; j++) {
         cstate = lst_get_int(child_states, j);
         this_deriv_sil +=  pL[cstate][cprmod->mod->tree->id]
           * cpr_get_silent_grad(&grad_lead, 0, cstate, mutrates);
@@ -850,6 +871,8 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
   vec_free(lscale);
   vec_free(lscale_o);
   sfree(branch_params);
+  sfree(state_sets);
+  sfree(state_set_sizes);
   
   return ll;
 }
