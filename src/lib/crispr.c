@@ -301,6 +301,13 @@ typedef struct {
   double exp_t_one_plus_sil;
 } CprBranchParams;
 
+typedef struct {
+  int silst;
+  double A;
+  double B;
+  double d00;
+} CprGradParams;
+
 static inline void cpr_set_branch_params(CprBranchParams *bp, int silst,
                                          double t, double silent_rate) {
   t = CPR_T_FLOOR + (t > 0.0 ? t : 0.0);
@@ -329,6 +336,54 @@ static inline double cpr_get_branch_prob(const CprBranchParams *bp, int i, int j
   return p + CPR_PFLOOR;  /* derivative still same as original value */
 }
 
+static inline void cpr_set_branch_grad_params(CprGradParams *gp, int silst,
+                                              double t, double silent_rate) {
+  t = CPR_T_FLOOR + (t > 0.0 ? t : 0.0);
+  double em1 = expm1(-t);          /* = exp(-t) - 1, accurate for small t */
+  double es = exp(-t * silent_rate);
+  gp->silst = silst;
+  gp->A = silent_rate * es * em1 + exp(-t * (1.0 + silent_rate));
+  gp->B = silent_rate * es;
+  gp->d00 = -(1.0 + silent_rate) * exp(-t * (1.0 + silent_rate));
+}
+
+static inline double cpr_get_branch_grad(const CprGradParams *gp, int i, int j,
+                                         Vector *mutrates) {
+  if (i == gp->silst)
+    return 0.0;
+  if (j == gp->silst)
+    return gp->B;
+  if (i == 0) {
+    if (j == 0) return gp->d00;
+    return vec_get(mutrates, j) * gp->A;
+  }
+  return (j == i ? -gp->B : 0.0);
+}
+
+static inline void cpr_set_silent_grad_params(CprGradParams *gp, int silst,
+                                              double t, double silent_rate) {
+  t = CPR_T_FLOOR + (t > 0.0 ? t : 0.0);
+  double Es = -t * exp(-silent_rate * t);
+  double E1 = exp(-t);
+  gp->silst = silst;
+  gp->A = Es * (1.0 - E1);
+  gp->B = Es;
+  gp->d00 = -t * exp(-t * (1.0 + silent_rate));
+}
+
+static inline double cpr_get_silent_grad(const CprGradParams *gp, int i, int j,
+                                         Vector *mutrates) {
+  if (i == gp->silst)
+    return 0.0;
+  if (j == gp->silst)
+    return -gp->B;
+  if (i == 0) {
+    if (j == 0) return gp->d00;
+    return vec_get(mutrates, j) * gp->A;
+  }
+  return (j == i ? gp->B : 0.0);
+}
+
 /* Compute and return the log likelihood of a tree model with respect
    to a CRISPR mutation table.  This function is derived from
    nj_compute_log_likelihood but is customized for the irreversible
@@ -348,7 +403,6 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
   double **pL = NULL, **pLbar = NULL;
   double ll = 0;
   double tmp[cprmod->nstates+1], root_eqfreqs[cprmod->nstates+1];
-  Matrix *grad_mat = NULL;
   Vector *lscale, *lscale_o; /* inside and outside versions */
   CprBranchParams *branch_params = NULL;
   List *par_states, *lchild_states, *rchild_states, *child_states, *sib_states;
@@ -666,8 +720,6 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
       }
 
       /* now compute branchwise derivatives in a final pass */
-      grad_mat = mat_new(nstates, nstates);
-      mat_zero(grad_mat);
       for (nodeidx = 0; nodeidx < lst_size(cprmod->mod->tree->nodes); nodeidx++) {
         TreeNode *par;
         double base_prob = total_prob, deriv;
@@ -710,17 +762,19 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
           
         if (n != cprmod->mod->tree->rchild) { /* skip this for right branch from root because unrooted */
           /* calculate derivative analytically */
+          CprGradParams grad_bp;
           deriv = 0;
-          cpr_branch_grad(grad_mat, n->dparent, cprmod->sil_rate, mutrates);
+          cpr_set_branch_grad_params(&grad_bp, silst, n->dparent, cprmod->sil_rate);
           for (i = 0; i < lst_size(par_states); i++) {
             pstate = lst_get_int(par_states, i);
             for (j = 0; j < lst_size(child_states); j++) {
               cstate = lst_get_int(child_states, j);
+              double grad = cpr_get_branch_grad(&grad_bp, pstate, cstate, mutrates);
               assert(isfinite(tmp[pstate]) && isfinite(pLbar[pstate][par->id]) &&
                      isfinite(pL[cstate][n->id]) &&
-                     isfinite(mat_get(grad_mat, pstate, cstate)));
+                     isfinite(grad));
               deriv += tmp[pstate] * pLbar[pstate][par->id] *
-                       pL[cstate][n->id] * mat_get(grad_mat, pstate, cstate);
+                       pL[cstate][n->id] * grad;
             }
           }
           /* adjust for all relevant scale terms */
@@ -734,13 +788,14 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
            including the right child of root (unlike branch lengths,
            the silencing rate is a global parameter affecting every branch) */
         this_deriv_sil = 0;
-        cpr_silent_rate_grad(grad_mat, n->dparent, cprmod->sil_rate, mutrates);
+        CprGradParams grad_sil;
+        cpr_set_silent_grad_params(&grad_sil, silst, n->dparent, cprmod->sil_rate);
         for (i = 0; i < lst_size(par_states); i++) {
           pstate = lst_get_int(par_states, i);
           for (j = 0; j < lst_size(child_states); j++) {
             cstate = lst_get_int(child_states, j);
             this_deriv_sil +=  tmp[pstate] * pLbar[pstate][par->id] * pL[cstate][n->id] *
-              mat_get(grad_mat, pstate, cstate);
+              cpr_get_silent_grad(&grad_sil, pstate, cstate, mutrates);
           }
         }
 
@@ -751,12 +806,14 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
 
       /* also compute gradient for leading branch */
       child_states = cpr_get_state_set(ancsets, nodetypes, cprmod->mod->tree, nstates);
-      cpr_branch_grad(grad_mat, cprmod->mod->tree->dparent, cprmod->sil_rate, mutrates);
+      CprGradParams grad_lead;
+      cpr_set_branch_grad_params(&grad_lead, silst, cprmod->mod->tree->dparent,
+                                 cprmod->sil_rate);
       double this_deriv_leading_t = 0;
       for (j = 0; j < lst_size(child_states); j++) {
         cstate = lst_get_int(child_states, j);
         this_deriv_leading_t += pL[cstate][cprmod->mod->tree->id]
-          * mat_get(grad_mat, 0, cstate);
+          * cpr_get_branch_grad(&grad_lead, 0, cstate, mutrates);
       }
 
       /* rescale; note !isfinite also catches NaN */
@@ -768,17 +825,15 @@ double cpr_ll_core(CrisprMutModel *cprmod, NJDerivs *derivs,
       
       /* leading branch also contributes to derivative of silent rate */
       this_deriv_sil = 0;
-      cpr_silent_rate_grad(grad_mat, cprmod->mod->tree->dparent, cprmod->sil_rate,
-                           mutrates);
+      cpr_set_silent_grad_params(&grad_lead, silst, cprmod->mod->tree->dparent,
+                                 cprmod->sil_rate);
       for (j = 0; j < lst_size(child_states); j++) {
         cstate = lst_get_int(child_states, j);
         this_deriv_sil +=  pL[cstate][cprmod->mod->tree->id]
-          * mat_get(grad_mat, 0, cstate);
+          * cpr_get_silent_grad(&grad_lead, 0, cstate, mutrates);
       }
       this_deriv_sil *= exp(expon);
       derivs->deriv_sil += this_deriv_sil;
-
-      mat_free(grad_mat);
     }
   }
   
