@@ -17,7 +17,6 @@
 #include <phast/misc.h>
 #include <upgma.h>
 #include <backprop.h>
-#include <heap.h>
 
 void upgma_find_min(Matrix *D, Vector *active, int *u, int *v) {
   int i, j, n = D->nrows;
@@ -227,12 +226,81 @@ void upgma_set_dt_dD(TreeNode *tree, Matrix* dt_dD) {
   mat_free(H);
 }
 
-UPGMAHeapNode* upgma_heap_node(int i, int j, Matrix *D) {
-  UPGMAHeapNode *hn = malloc(sizeof(UPGMAHeapNode));
-  hn->i = i;
-  hn->j = j;
-  hn->val = (i < j) ? mat_get(D, i, j) : mat_get(D, j, i);
-  return hn;
+typedef struct {
+  UPGMAHeapNode *nodes;
+  int size;
+  int capacity;
+} UPGMAMinHeap;
+
+static UPGMAMinHeap *upgma_heap_new(int capacity) {
+  UPGMAMinHeap *heap = smalloc(sizeof(UPGMAMinHeap));
+  heap->nodes = smalloc(capacity * sizeof(UPGMAHeapNode));
+  heap->size = 0;
+  heap->capacity = capacity;
+  return heap;
+}
+
+static void upgma_heap_free(UPGMAMinHeap *heap) {
+  if (heap == NULL)
+    return;
+  sfree(heap->nodes);
+  sfree(heap);
+}
+
+static void upgma_heap_swap(UPGMAHeapNode *a, UPGMAHeapNode *b) {
+  UPGMAHeapNode tmp = *a;
+  *a = *b;
+  *b = tmp;
+}
+
+static void upgma_heap_insert(UPGMAMinHeap *heap, int i, int j, double val) {
+  int idx;
+  if (heap->size >= heap->capacity)
+    die("ERROR upgma_heap_insert: heap capacity exceeded\n");
+
+  idx = heap->size++;
+  heap->nodes[idx].i = i;
+  heap->nodes[idx].j = j;
+  heap->nodes[idx].val = val;
+
+  while (idx > 0) {
+    int parent = (idx - 1) / 2;
+    if (heap->nodes[parent].val <= heap->nodes[idx].val)
+      break;
+    upgma_heap_swap(&heap->nodes[parent], &heap->nodes[idx]);
+    idx = parent;
+  }
+}
+
+static UPGMAHeapNode upgma_heap_delete_min(UPGMAMinHeap *heap) {
+  UPGMAHeapNode min_node;
+  int idx = 0;
+
+  if (heap->size <= 0)
+    die("ERROR upgma_heap_delete_min: empty heap\n");
+
+  min_node = heap->nodes[0];
+  heap->nodes[0] = heap->nodes[--heap->size];
+
+  while (TRUE) {
+    int left = 2 * idx + 1;
+    int right = left + 1;
+    int smallest = idx;
+
+    if (left < heap->size &&
+        heap->nodes[left].val < heap->nodes[smallest].val)
+      smallest = left;
+    if (right < heap->size &&
+        heap->nodes[right].val < heap->nodes[smallest].val)
+      smallest = right;
+    if (smallest == idx)
+      break;
+
+    upgma_heap_swap(&heap->nodes[idx], &heap->nodes[smallest]);
+    idx = smallest;
+  }
+
+  return min_node;
 }
 
 TreeNode* upgma_fast_infer(Matrix *initD, char **names, Matrix *dt_dD) {
@@ -243,13 +311,14 @@ TreeNode* upgma_fast_infer(Matrix *initD, char **names, Matrix *dt_dD) {
   Vector *active, *sizes, *heights;
   List *nodes;
   TreeNode *node_u, *node_v, *node_w, *root;
-  HeapNode *heap = NULL;
-  UPGMAHeapNode *hn, *newhn;
+  UPGMAMinHeap *heap;
+  UPGMAHeapNode hn;
   double hw;
 
   if (initD->nrows != initD->ncols || n < 2)
     die("ERROR upgma_fast_infer: bad distance matrix\n");
 
+  heap = upgma_heap_new((n - 1) * (n - 1) + 1);
   D = mat_new(N, N); mat_zero(D);
   active = vec_new(N); vec_set_all(active, FALSE);
   sizes = vec_new(N); vec_zero(sizes);
@@ -269,8 +338,7 @@ TreeNode* upgma_fast_infer(Matrix *initD, char **names, Matrix *dt_dD) {
     for (j = i+1; j < n; j++) {
       double d = mat_get(initD, i, j);
       mat_set(D, i, j, d);
-      hn = upgma_heap_node(i, j, D);
-      heap = hp_insert(heap, hn->val, hn);
+      upgma_heap_insert(heap, i, j, d);
     }
   }
   
@@ -278,14 +346,13 @@ TreeNode* upgma_fast_infer(Matrix *initD, char **names, Matrix *dt_dD) {
   for (w = n; w < N; w++) {
     /* Extract minimum from heap */
     while (TRUE) {
-      heap = hp_delete_min(heap, (void**)&hn);
-      if (vec_get(active, hn->i) == TRUE && vec_get(active, hn->j) == TRUE) break;
-      free(hn);
+      hn = upgma_heap_delete_min(heap);
+      if (vec_get(active, hn.i) == TRUE && vec_get(active, hn.j) == TRUE) break;
     }
 
     /* join u and v; w is the new node */
-    u = hn->i;
-    v = hn->j;
+    u = hn.i;
+    v = hn.j;
     upgma_updateD(D, u, v, w, active, sizes, heights);
     node_w = tr_new_node();
     lst_push_ptr(nodes, node_w);
@@ -306,12 +373,9 @@ TreeNode* upgma_fast_infer(Matrix *initD, char **names, Matrix *dt_dD) {
     /* Insert new distances into heap */
     for (i = 0; i < w; i++) {
       if (vec_get(active, i)) {
-        newhn = upgma_heap_node(i, w, D);
-        heap = hp_insert(heap, newhn->val, newhn);
+        upgma_heap_insert(heap, i, w, mat_get(D, i, w));
       }
     }
-
-    free(hn);
   }
 
   /* Final join */
@@ -347,13 +411,7 @@ TreeNode* upgma_fast_infer(Matrix *initD, char **names, Matrix *dt_dD) {
   if (dt_dD != NULL)
     upgma_set_dt_dD(root, dt_dD);  // Postprocess
 
-  /* drain heap so each UPGMAHeapNode is freed */
-  while (heap != NULL) {
-    heap = hp_delete_min(heap, (void **)&hn);
-    free(hn);
-  }
-  
-  hp_free(heap);
+  upgma_heap_free(heap);
   lst_free(nodes);
   vec_free(active);
   vec_free(sizes);
