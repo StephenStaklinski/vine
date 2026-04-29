@@ -30,15 +30,14 @@ void nj_update_covariance(multi_MVN *mmvn, CovarData *data) {
   
   /* Note: variance parameters now stored as log values and must
      be exponentiated */
-  mat_zero(mmvn->mvn->sigma);
   if (data->type == CONST) {
-    mat_set_identity(mmvn->mvn->sigma);
     data->lambda = exp(vec_get(sigma_params, 0));
     if (!isfinite(data->lambda) || data->lambda < VARFLOOR) {
       data->lambda = VARFLOOR;
       vec_set(sigma_params, 0, log(VARFLOOR)); /* keeps param from running away */
     }
-    mat_scale(mmvn->mvn->sigma, data->lambda);
+    for (i = 0; i < mmvn->mvn->sigma->nrows; i++)
+      mat_set(mmvn->mvn->sigma, i, i, data->lambda);
   }
   else if (data->type == DIAG) {
     for (i = 0; i < sigma_params->size; i++) {
