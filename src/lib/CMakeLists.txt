@@ -9,7 +9,6 @@ add_library(vine_core STATIC
     crispr.c
     geometry.c
     gradients.c
-    heap.c
     hutchinson.c
     likelihoods.c
     migration.c
